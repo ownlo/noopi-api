@@ -1,0 +1,20 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: noopi
+      MYSQL_USER: noopi
+      MYSQL_PASSWORD: noopi
+      MYSQL_ROOT_PASSWORD: local-root
+    ports:
+      - "127.0.0.1:3306:3306"
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  mysql-data:

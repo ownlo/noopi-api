@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: noopi-api
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/noopi?characterEncoding=UTF-8&serverTimezone=UTC}
+    username: ${DB_USERNAME:noopi}
+    password: ${DB_PASSWORD:noopi}
+    hikari:
+      maximum-pool-size: 5
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+logging:
+  structured:
+    format:
+      console: logstash
+noopi:
+  disconnect-grace: ${DISCONNECT_GRACE:PT2M}
+  room-ttl: ${ROOM_TTL:PT12H}
+  cleanup-interval-ms: ${CLEANUP_INTERVAL_MS:60000}
+  recent-keyword-count: ${RECENT_KEYWORD_COUNT:10}
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}

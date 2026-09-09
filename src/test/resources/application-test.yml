@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:noopi;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+logging:
+  structured:
+    format:
+      console:
+noopi:
+  cleanup-interval-ms: 3600000

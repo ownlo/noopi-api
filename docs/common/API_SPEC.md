@@ -359,7 +359,13 @@ Response `200 OK` 예시:
       "keyword": "바다",
       "roleChecked": false,
       "roleCheckedCount": 2,
-      "participantCount": 4
+      "participantCount": 4,
+      "playerRoleCheckStatuses": [
+        { "playerId": 11, "checked": true },
+        { "playerId": 12, "checked": false },
+        { "playerId": 13, "checked": true },
+        { "playerId": 14, "checked": false }
+      ]
     }
   }
 }
@@ -545,6 +551,22 @@ Response `201 Created`:
 ```
 
 생성 시점에는 아직 역할/제시어를 클라이언트에 공개하지 않는다.
+
+GameSession 생성 후 `GET /api/rooms/{roomId}/state`의 `READY` 게임 상태는
+선택한 카테고리를 모든 Room Player에게 반환한다. 방장이 아닌 참가자와
+새로고침한 사용자도 준비 화면을 서버 상태로 복구할 수 있다.
+
+``` json
+{
+  "type": "LIAR",
+  "phase": "READY",
+  "categoryCode": "FOOD",
+  "categoryName": "음식"
+}
+```
+
+`RANDOM`을 선택한 경우 `categoryCode`는 `RANDOM`, `categoryName`은
+카테고리 목록 API가 제공하는 가상 카테고리 표시 이름인 `랜덤`이다.
 
 주요 오류:
 
@@ -941,6 +963,23 @@ PLAYER_NOT_EXCLUDABLE
 ## 21. 라이어 마지막 제시어 추측
 
 최종 지목자가 실제 라이어일 때만 `LIAR_GUESS` 단계로 진입한다.
+
+`LIAR_GUESS` 단계의 `GET /state`는 최종 지목으로 이미 공개된 라이어를
+모든 참가자에게 반환한다. 시민은 이 정보로 추측 중인 Player를 표시할 수
+있다. 게임 진행 중 제시어 공개 규칙은 그대로 유지한다.
+
+``` json
+{
+  "type": "LIAR",
+  "phase": "LIAR_GUESS",
+  "myRole": "CITIZEN",
+  "keyword": "바다",
+  "liarPlayer": {
+    "playerId": 13,
+    "nickname": "예은"
+  }
+}
+```
 
 이 API는 실제 라이어만 호출할 수 있다.
 
