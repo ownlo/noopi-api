@@ -118,6 +118,9 @@ HTTP Status 기본 원칙:
 
 # Room API
 
+Room 생성과 참가 요청의 `nickname`은 앞뒤 공백을 제거한 뒤 1글자 이상
+5글자 이하여야 한다. 조건을 만족하지 않으면 `INVALID_NICKNAME`을 반환한다.
+
 ## 5. Room 생성
 
 ``` http
