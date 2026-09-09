@@ -406,6 +406,22 @@ Response `200 OK` 예시:
 }
 ```
 
+`ROLE_REVEAL`과 `DISCUSSION` 단계에서는 본인이 역할과 제시어를 다시 확인할
+수 있도록 위 개인별 필드를 동일하게 반환한다. 시민의 `keyword`는 유지하며,
+라이어의 `keyword`는 항상 `null`이다.
+
+`DISCUSSION` 단계의 `gameState` 예:
+
+``` json
+{
+  "type": "LIAR",
+  "phase": "DISCUSSION",
+  "myRole": "CITIZEN",
+  "keyword": "바다",
+  "firstSpeakerPlayerId": 14
+}
+```
+
 다른 Player의 역할은 게임 종료 전 절대 반환하지 않는다.
 
 다른 Player가 누구에게 투표했는지도 투표 전·진행 중·종료 후 모두
