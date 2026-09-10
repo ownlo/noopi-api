@@ -1,10 +1,9 @@
 spring:
   application:
     name: noopi-api
+  profiles:
+    default: local
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/noopi?characterEncoding=UTF-8&serverTimezone=UTC}
-    username: ${DB_USERNAME:noopi}
-    password: ${DB_PASSWORD:noopi}
     hikari:
       maximum-pool-size: 5
   jpa:

@@ -10,7 +10,20 @@ docker compose up -d mysql
 ```
 
 기본 주소는 `http://localhost:8080`이다. 로컬 MySQL 접속값은 `compose.yaml`과
-`application.yml`에 있다. 외부 환경에서는 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`를 설정한다.
+`application-local.yml`에 있으며, 별도 프로필을 지정하지 않으면 `local` 프로필이 적용된다.
+
+운영 환경에서는 `prod` 프로필과 DB 환경 변수를 지정한다.
+
+```sh
+SPRING_PROFILES_ACTIVE=prod \
+DB_URL='jdbc:mysql://<host>:3306/noopi?characterEncoding=UTF-8&serverTimezone=UTC' \
+DB_USERNAME='<username>' \
+DB_PASSWORD='<password>' \
+./gradlew bootRun
+```
+
+`prod` 프로필에는 DB 접속 기본값이 없으므로 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`가
+모두 필요하다.
 
 - Swagger UI: `http://localhost:8080/swagger-ui/index.html`
 - OpenAPI: `http://localhost:8080/v3/api-docs`
