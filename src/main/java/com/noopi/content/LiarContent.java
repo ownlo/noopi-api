@@ -5,7 +5,7 @@ import java.util.List;
 
 public interface LiarContent {
     record Category(String code, String name, boolean virtual) {}
-    record Keyword(long id, String keyword, List<String> acceptedAnswers) {}
+    record Keyword(long id, String keyword) {}
     List<Category> categories();
     void validateCategory(String code);
     Keyword choose(String code, Collection<Long> recent);

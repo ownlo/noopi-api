@@ -2,8 +2,6 @@ package com.noopi.content;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 @Entity
 @Table(name = "liar_keyword")
@@ -14,6 +12,5 @@ public class LiarKeywordEntity {
     @Column(nullable = false) boolean active;
     @Column(nullable = false) LocalDateTime createdAt;
     @Column(nullable = false) LocalDateTime updatedAt;
-    @OneToMany(mappedBy = "keyword") List<LiarKeywordAcceptedAnswerEntity> answers = new ArrayList<>();
     protected LiarKeywordEntity() {}
 }

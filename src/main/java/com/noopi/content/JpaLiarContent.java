@@ -31,6 +31,6 @@ public class JpaLiarContent implements LiarContent {
         var fresh = all.stream().filter(k -> !recent.contains(k.id)).toList();
         var pool = fresh.isEmpty() ? all : fresh;
         var selected = pool.get(random.nextInt(pool.size()));
-        return new Keyword(selected.id, selected.keyword, selected.answers.stream().map(a -> a.answer).toList());
+        return new Keyword(selected.id, selected.keyword);
     }
 }

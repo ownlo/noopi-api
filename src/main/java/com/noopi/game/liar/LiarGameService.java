@@ -140,15 +140,14 @@ public class LiarGameService {
         INVALID_GAME_PHASE.require(g.phase == LIAR_GUESS && Objects.equals(g.accused, g.liarId));
         INVALID_ANSWER.require(answer != null && !answer.isBlank());
         String normalized = normalize(answer);
-        boolean correct = normalize(g.keyword.keyword()).equals(normalized)
-            || g.keyword.acceptedAnswers().stream().map(LiarGameService::normalize).anyMatch(normalized::equals);
+        boolean correct = normalize(g.keyword.keyword()).equals(normalized);
         g.guess = answer.strip();
         g.correct = correct;
         events.game(room, "LIAR_GUESS_SUBMITTED", Map.of());
         finish(room, correct ? "LIAR" : "CITIZEN");
         return correct;
     }
-    static String normalize(String value) { return value.strip().replaceAll("(?U)\\s+", " ").toLowerCase(Locale.ROOT); }
+    static String normalize(String value) { return value.replaceAll("(?U)\\s+", ""); }
     private void finish(RoomRuntime room, String winner) {
         var g = game(room);
         g.winner = winner;

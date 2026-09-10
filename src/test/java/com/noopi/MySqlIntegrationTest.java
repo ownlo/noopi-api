@@ -30,15 +30,14 @@ class MySqlIntegrationTest extends HttpWebSocketIntegrationTest {
     @Test @Transactional void migrationsAndContentFilteringAndRecentAvoidance() {
         assertThat(jdbc.queryForObject("select count(*) from liar_category where code = 'RANDOM'", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from liar_keyword", Integer.class)).isEqualTo(15);
-        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success = 1", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success = 1", Integer.class)).isEqualTo(3);
         assertThat(jdbc.queryForList("show tables", String.class)).containsExactlyInAnyOrder(
-            "flyway_schema_history", "liar_category", "liar_keyword", "liar_keyword_accepted_answer");
+            "flyway_schema_history", "liar_category", "liar_keyword");
         assertThat(content.choose("FOOD", List.of(1L, 2L, 3L, 4L)).id()).isEqualTo(5L);
         assertThat(content.choose("FOOD", List.of(1L, 2L, 3L, 4L, 5L))).isNotNull();
         jdbc.update("update liar_keyword set active = false where category_id = 1 and id <> 1");
         var keyword = content.choose("FOOD", List.of());
         assertThat(keyword.keyword()).isEqualTo("피자");
-        assertThat(keyword.acceptedAnswers()).contains("pizza");
         jdbc.update("update liar_category set active = false where id = 1");
         assertThat(content.categories()).noneMatch(c -> c.code().equals("FOOD"));
         assertThatThrownBy(() -> content.choose("FOOD", List.of())).isInstanceOfSatisfying(com.noopi.api.DomainException.class,

@@ -52,7 +52,7 @@ class GameRulesTest {
         LiarContent content = new LiarContent() {
             public List<Category> categories() { return List.of(new Category("RANDOM", "랜덤", true)); }
             public void validateCategory(String code) { INVALID_CATEGORY.require("RANDOM".equals(code)); }
-            public Keyword choose(String code, Collection<Long> recent) { return new Keyword(1, "바다", List.of("sea", "blue sea")); }
+            public Keyword choose(String code, Collection<Long> recent) { return new Keyword(1, "바다"); }
         };
         liarService = new LiarGameService(content, random, events, 10);
         app = new GameApplication(store, liarService, new LiarStateProjection(), events, clock, Duration.ofMinutes(2));
@@ -197,8 +197,8 @@ class GameRulesTest {
         }
         error(INVALID_GAME_PHASE, () -> app.guess(room, session, clients.get(liar), "바다"));
     }
-    @ParameterizedTest @CsvSource({"' 바다 ',true", "'  BLUE   Sea  ',true", "수영장,false"})
-    void liarGuessIsPrivateRoleRestrictedNormalizedAndSingleUse(String answer, boolean correct) {
+    @ParameterizedTest @CsvSource({"' 바다 ',true", "'바 다',true", "바닷가,false", "SEA,false"})
+    void liarGuessIsPrivateRoleRestrictedAllowsOnlySpacingDifferencesAndSingleUse(String answer, boolean correct) {
         start(4); voting(); accuse(liar);
         assertThat(state(liar).get("phase")).isEqualTo("LIAR_GUESS");
         assertThat(state(liar).get("keyword")).isNull();

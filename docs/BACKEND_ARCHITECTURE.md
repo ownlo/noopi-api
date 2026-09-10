@@ -92,7 +92,6 @@ class RoomRuntime {
 MySQL은 영구 관리가 필요한 라이어 게임 콘텐츠에 사용한다.
 - LiarCategory
 - LiarKeyword
-- LiarKeywordAcceptedAnswer
 
 Room, Player, GameSession, Role, Vote는 MVP에서 JPA Entity로 만들지 않는다. 상세 스키마는 `DATABASE.md`를 따른다.
 
@@ -174,7 +173,7 @@ API, `/state`, WebSocket 이벤트에 다른 Player의 `voterPlayerId → target
 
 최종 지목자가 라이어이면 `LIAR_GUESS`로 전환한다. 실제 라이어만 한 번 제출할 수 있다.
 
-정답 판정은 서버가 수행하며 기본 정규화는 trim, case-insensitive, 연속 공백 정리다. 필요하면 accepted answer를 함께 비교한다. LLM 의미 판정은 MVP 범위가 아니다.
+정답 판정은 서버가 수행한다. 실제 제시어와 추측 답안에서 모든 공백 문자를 제거한 값이 정확히 같을 때만 정답이다. 띄어쓰기 외의 문자 차이와 대소문자 차이는 허용하지 않으며 별칭 정답은 관리하지 않는다. LLM 의미 판정은 MVP 범위가 아니다.
 
 ## 17. Disconnect / Reconnect
 WebSocket 연결 종료는 Room 탈퇴가 아니다. Player를 `DISCONNECTED`로 표시하고 일정 시간 재접속을 허용한다.

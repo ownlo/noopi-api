@@ -1,0 +1,1 @@
+DROP TABLE liar_keyword_accepted_answer;

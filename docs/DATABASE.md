@@ -23,7 +23,6 @@ NOOPI MVP에서 MySQL에 영구 저장하는 데이터의 범위를 정의한다
 ### MySQL
 - `liar_category`
 - `liar_keyword`
-- `liar_keyword_accepted_answer`
 
 MVP에서 Room/GameSession/Role/Vote 테이블을 만들지 않는다.
 
@@ -76,31 +75,13 @@ INDEX(category_id, active)
 
 각 제시어는 하나의 실제 카테고리에 속한다.
 
-## 6. liar_keyword_accepted_answer
-목적: 라이어의 마지막 추측에서 동일 정답으로 인정할 별칭.
+## 6. 정답 정규화
+서버는 실제 `liar_keyword.keyword`와 추측 답안에서 모든 공백 문자를 제거한
+값이 정확히 같은지 비교한다.
 
-권장 컬럼:
-```text
-id          BIGINT PK AUTO_INCREMENT
-keyword_id  BIGINT NOT NULL
-answer      VARCHAR(255) NOT NULL
-created_at  DATETIME(6) NOT NULL
-```
-
-제약/Index:
-```text
-FK keyword_id -> liar_keyword.id
-UNIQUE(keyword_id, answer)
-INDEX(keyword_id)
-```
-
-accepted answer가 없어도 기본 `liar_keyword.keyword` 자체는 정답 후보다.
-
-## 7. 정답 정규화
-서버의 기본 비교:
-- 앞뒤 공백 제거
-- 대소문자 차이 무시
-- 불필요한 연속 공백 정리
+- 띄어쓰기 차이만 허용
+- 대소문자 차이 불허
+- 별칭 또는 별도의 허용 정답을 저장하지 않음
 
 LLM 기반 의미 판정은 MVP 범위가 아니다.
 
@@ -145,7 +126,6 @@ JPA Entity는 영구 콘텐츠만 표현한다.
 ```text
 LiarCategoryEntity
 LiarKeywordEntity
-LiarKeywordAcceptedAnswerEntity
 ```
 
 Runtime 객체에 `@Entity`를 붙이지 않는다.
@@ -160,8 +140,7 @@ Admin UI는 MVP 필수 범위가 아니다.
 ```text
 V1__create_liar_category.sql
 V2__create_liar_keyword.sql
-V3__create_liar_keyword_accepted_answer.sql
-V4__seed_liar_game_data.sql
+V3__drop_liar_keyword_accepted_answer.sql
 ```
 
 필요하면 초기 migration을 합칠 수 있다.
@@ -199,17 +178,6 @@ CREATE TABLE liar_keyword (
         FOREIGN KEY (category_id) REFERENCES liar_category(id)
 );
 
-CREATE TABLE liar_keyword_accepted_answer (
-    id BIGINT NOT NULL AUTO_INCREMENT,
-    keyword_id BIGINT NOT NULL,
-    answer VARCHAR(255) NOT NULL,
-    created_at DATETIME(6) NOT NULL,
-    PRIMARY KEY (id),
-    UNIQUE KEY uk_liar_keyword_answer (keyword_id, answer),
-    KEY idx_liar_keyword_answer_keyword (keyword_id),
-    CONSTRAINT fk_liar_keyword_answer_keyword
-        FOREIGN KEY (keyword_id) REFERENCES liar_keyword(id)
-);
 ```
 
 실제 구현에서는 Flyway migration을 기준으로 한다.
