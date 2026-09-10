@@ -48,7 +48,7 @@ API, WebSocket payload, 게임 규칙, DB 테이블을 편의상 임의 추가�
 필요한 구현 세부사항은 공통 계약을 바꾸지 않는 범위에서 가장 단순하게 결정한다.
 
 ## 5. 기술 스택
-- Java 21
+- Java 26
 - Spring Boot 3.5.x
 - Spring MVC
 - Spring WebSocket

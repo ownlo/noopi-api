@@ -13,7 +13,7 @@
 Backend 전용 구현 원칙은 이 문서와 `DATABASE.md`를 따른다. 공통 계약과 충돌할 경우 공통 계약을 임의로 변경하지 말고 충돌을 보고한다.
 
 ## 2. 기술 스택
-- Java 21
+- Java 26
 - Spring Boot 3.5.x
 - Spring MVC
 - Spring WebSocket

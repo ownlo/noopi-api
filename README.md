@@ -1,6 +1,6 @@
 # NOOPI Backend MVP
 
-Java 21 · Spring Boot 3.5 · Spring MVC/WebSocket · JPA · MySQL 8 · Flyway.
+Java 26 · Spring Boot 3.5 · Spring MVC/WebSocket · JPA · MySQL 8 · Flyway.
 
 ## 실행
 
