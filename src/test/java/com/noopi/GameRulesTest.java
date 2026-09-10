@@ -69,6 +69,19 @@ class GameRulesTest {
         }
     }
 
+    @Test void disconnectedHostMakesRoomInvisibleToNewPlayers() {
+        var created = app.create("host", "방장", "MALE");
+        room = created.room().roomId();
+        String code = created.room().roomCode();
+        long hostId = created.me().playerId();
+
+        disconnect(hostId);
+
+        error(ROOM_NOT_FOUND, () -> app.lookup("guest", code));
+        error(ROOM_NOT_FOUND, () -> app.join(room, "guest", "참가자", "FEMALE"));
+        assertThat(store.<Integer>inRoom(room, r -> r.players.size())).isEqualTo(1);
+    }
+
     @Test void readyStateRestoresSelectedCategoryForEveryRoomPlayer() {
         createPlayers(3);
         session = app.createSession(room, "c0", "LIAR", "RANDOM").gameSessionId();
@@ -281,13 +294,16 @@ class GameRulesTest {
         assertThat(events.count("GAME_CANCELLED")).isEqualTo(1);
         error(GAME_SESSION_ALREADY_FINISHED, () -> app.cancel(room, session, "c0"));
     }
-    @Test void explicitLiarLeaveCancelsAndHostLeaveTransfers() {
+    @Test void explicitHostLeaveClosesRoomWithoutTransfer() {
         start(4);
-        app.leave(room, clients.get(liar));
-        var survivor = clients.entrySet().stream().filter(e -> e.getKey() != liar).findFirst().orElseThrow();
-        assertThat(app.state(room, survivor.getValue()).gameSession().status()).isEqualTo("CANCELLED");
-        if (liar != ids.getFirst()) app.leave(room, "c0");
-        assertThat(events.count("HOST_CHANGED")).isEqualTo(1);
+        if (liar != ids.getFirst()) {
+            app.leave(room, clients.get(liar));
+            assertThat(app.state(room, "c0").gameSession().status()).isEqualTo("CANCELLED");
+        }
+        app.leave(room, "c0");
+        error(ROOM_NOT_FOUND, () -> app.state(room, "c1"));
+        assertThat(events.count("ROOM_CLOSED")).isEqualTo(1);
+        assertThat(events.count("HOST_CHANGED")).isZero();
     }
     @Test void freshGameHasNewIdAndNoPreviousActions() {
         start(4); app.cancel(room, session, "c0");
@@ -320,17 +336,18 @@ class GameRulesTest {
         error(TOO_MANY_PLAYERS, () -> app.start(room, session, "c0"));
         error(NOT_ROOM_HOST, () -> app.cancel(room, session, "c1"));
     }
-    @Test void cleanupExpiresLiarTransfersHostAndRemovesRoom() {
+    @Test void disconnectedHostWaitsWithoutTransferOrAutomaticClosure() {
         start(4);
-        disconnect(liar); disconnect(ids.getFirst());
-        clock.now = clock.now.plusSeconds(121);
-        var cleanup = new RoomCleanup(store, events, liarService, clock, Duration.ofHours(1), Duration.ofMinutes(2));
+        disconnect(ids.getFirst());
+        var cleanup = new RoomCleanup(store, events, clock, Duration.ofHours(1));
+        clock.now = clock.now.plus(Duration.ofMinutes(30));
         cleanup.clean();
-        assertThat(state(ids.get(1)).get("phase")).isEqualTo("CANCELLED");
-        assertThat(events.count("HOST_CHANGED")).isEqualTo(1);
-        clock.now = clock.now.plusSeconds(3601); cleanup.clean();
-        error(ROOM_NOT_FOUND, () -> app.state(room, "c1"));
-        assertThat(events.closed).contains(room);
+        assertThat(app.state(room, "c1").players()).anySatisfy(player -> {
+            assertThat(player.host()).isTrue();
+            assertThat(player.connectionStatus()).isEqualTo("DISCONNECTED");
+        });
+        assertThat(events.count("ROOM_CLOSED")).isZero();
+        assertThat(events.count("HOST_CHANGED")).isZero();
     }
     @Test void duplicateConcurrentVoteSucceedsOnce() throws Exception {
         start(4); voting();

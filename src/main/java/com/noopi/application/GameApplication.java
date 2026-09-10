@@ -33,7 +33,10 @@ public class GameApplication {
     }
     public Responses.Lookup lookup(String clientId, String code) {
         requireClient(clientId);
-        return rooms.inRoom(rooms.byCode(code), r -> new Responses.Lookup(r.id, r.code, r.status(), r.players.size(), true));
+        return rooms.inRoom(rooms.byCode(code), r -> {
+            requireConnectedHost(r);
+            return new Responses.Lookup(r.id, r.code, r.status(), r.players.size(), true);
+        });
     }
     public Responses.Player join(long roomId, String clientId, String nickname, String gender) {
         requireClient(clientId);
@@ -43,6 +46,7 @@ public class GameApplication {
                 reconnect(r, existing.get());
                 return player(r, existing.get());
             }
+            requireConnectedHost(r);
             var p = new PlayerRuntime(rooms.nextId(), clientId, nickname, gender);
             NICKNAME_ALREADY_EXISTS.require(r.players.values().stream().noneMatch(other -> other.nickname.equals(p.nickname)));
             r.players.put(p.id, p);
@@ -57,13 +61,10 @@ public class GameApplication {
             r.players.remove(p.id);
             events.closePlayer(r.id, p.id);
             events.publish(r, "PLAYER_LEFT", null, Map.of("playerId", p.id));
-            if (r.players.isEmpty()) {
+            if (r.hostPlayerId == p.id) {
+                events.publish(r, "ROOM_CLOSED", null, Map.of("reason", "HOST_LEFT"));
                 rooms.remove(r);
                 events.closeRoom(r.id);
-            } else if (r.hostPlayerId == p.id) {
-                // Stable room policy: oldest remaining member succeeds the departing host.
-                r.hostPlayerId = r.players.keySet().iterator().next();
-                events.publish(r, "HOST_CHANGED", null, Map.of("hostPlayerId", r.hostPlayerId));
             }
             return null;
         });
@@ -129,6 +130,10 @@ public class GameApplication {
         GAME_SESSION_NOT_FOUND.require(room.session != null && room.session.id == id);
     }
     private static void requireClient(String id) { PLAYER_NOT_IN_ROOM.require(id != null && !id.isBlank()); }
+    private static void requireConnectedHost(RoomRuntime room) {
+        var host = room.players.get(room.hostPlayerId);
+        ROOM_NOT_FOUND.require(host != null && host.connectionStatus == PlayerRuntime.ConnectionStatus.CONNECTED);
+    }
     private Responses.Player player(RoomRuntime r, PlayerRuntime p) {
         return new Responses.Player(p.id, p.nickname, p.gender.name(), r.hostPlayerId == p.id, p.connectionStatus.name());
     }

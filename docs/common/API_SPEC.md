@@ -202,6 +202,9 @@ Response `200 OK`:
 이 API는 역할, 제시어, 투표 정보 등 게임의 비공개 정보를 반환하지
 않는다.
 
+현재 방장이 `DISCONNECTED` 상태이면 새로운 참가자에게 Room의 존재 여부를
+노출하지 않고 `ROOM_NOT_FOUND`를 반환한다.
+
 주요 오류:
 
 ``` text
@@ -251,6 +254,10 @@ Response `201 Created`:
 진행 중인 GameSession이 있는 Room에 새로 참가한 Player는 Room에는
 참가하지만 현재 GameSession 참가자에는 포함되지 않는다.
 
+Room 조회 이후 참가 요청 전에 방장이 `DISCONNECTED` 상태가 될 수 있으므로
+참가 요청에서도 방장의 연결 상태를 다시 검증한다. 기존 Player의 재접속이
+아닌 새로운 참가 요청이라면 `ROOM_NOT_FOUND`를 반환한다.
+
 주요 오류:
 
 ``` text
@@ -283,7 +290,8 @@ Response:
 
 명시적인 나가기는 단순 WebSocket 연결 종료와 구분한다.
 
-방장이 나가면 Room 정책에 따라 새로운 방장을 선정한다.
+방장이 나가면 `ROOM_CLOSED` 이벤트를 `HOST_LEFT` 사유로 전송하고 Room을
+삭제한다. 남은 참가자는 홈 화면으로 이동한다.
 
 현재 GameSession 참가자의 이탈 처리는 해당 게임 규칙을 따른다.
 
@@ -1195,6 +1203,21 @@ WebSocket은 상태 저장소가 아니다. 연결 직후 또는 재접속 후�
   }
 }
 ```
+
+### ROOM_CLOSED
+
+방장이 명시적으로 Room을 나가 Room이 종료될 때 전체 참가자에게 전달한다.
+
+``` json
+{
+  "type": "ROOM_CLOSED",
+  "payload": {
+    "reason": "HOST_LEFT"
+  }
+}
+```
+
+수신한 Client는 저장된 마지막 Room 정보를 제거하고 홈 화면으로 이동한다.
 
 ------------------------------------------------------------------------
 

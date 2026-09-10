@@ -189,7 +189,7 @@ WebSocket 연결 종료는 Room 탈퇴가 아니다. Player를 `DISCONNECTED`로
 ## 18. Host
 Room 생성자가 최초 Host다.
 
-Host의 일시 Disconnect로 즉시 권한을 이전하지 않는다. 명시적 Room 이탈 또는 정책상 영구 이탈 시 Room 정책에 따라 Host를 이전한다.
+Host가 Disconnect되어도 Room을 자동 종료하거나 Host 권한을 이전하지 않는다. 신규 참가는 차단하며 기존 참가자는 제한 없이 재접속을 기다리거나 직접 Room을 떠날 수 있다. Host가 나가기 API로 명시적으로 Room을 떠나면 `ROOM_CLOSED` 이벤트를 `HOST_LEFT` 사유로 발행한 뒤 Room을 삭제한다.
 
 ## 19. WebSocket
 개념 endpoint는 `/ws`다.
