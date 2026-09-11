@@ -46,4 +46,9 @@ public class GameController {
     public Responses.Guess guess(@PathVariable long roomId, @PathVariable long gameSessionId, @RequestHeader("X-Client-Id") String client, @RequestBody GuessRequest body) {
         return app.guess(roomId, gameSessionId, client, body.answer());
     }
+    @PostMapping("/{gameSessionId}/blind/guesses")
+    public Responses.Guess blindGuess(@PathVariable long roomId, @PathVariable long gameSessionId,
+                                      @RequestHeader("X-Client-Id") String client, @RequestBody GuessRequest body) {
+        return app.blindGuess(roomId, gameSessionId, client, body.answer());
+    }
 }

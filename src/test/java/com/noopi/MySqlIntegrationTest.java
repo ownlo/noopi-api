@@ -1,6 +1,7 @@
 package com.noopi;
 
 import com.noopi.content.LiarContent;
+import com.noopi.content.BlindContent;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,13 +27,17 @@ class MySqlIntegrationTest extends HttpWebSocketIntegrationTest {
     }
     @Autowired JdbcTemplate jdbc;
     @Autowired LiarContent content;
+    @Autowired BlindContent blindContent;
 
     @Test @Transactional void migrationsAndContentFilteringAndRecentAvoidance() {
         assertThat(jdbc.queryForObject("select count(*) from liar_category where code = 'RANDOM'", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from liar_keyword", Integer.class)).isEqualTo(15);
-        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success = 1", Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("select count(*) from blind_keyword", Integer.class)).isEqualTo(10);
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success = 1", Integer.class)).isEqualTo(4);
         assertThat(jdbc.queryForList("show tables", String.class)).containsExactlyInAnyOrder(
-            "flyway_schema_history", "liar_category", "liar_keyword");
+            "blind_keyword", "flyway_schema_history", "liar_category", "liar_keyword");
+        var blind = blindContent.chooseDistinct(2, List.of());
+        assertThat(blind).hasSize(2).extracting(BlindContent.Keyword::id).doesNotHaveDuplicates();
         assertThat(content.choose("FOOD", List.of(1L, 2L, 3L, 4L)).id()).isEqualTo(5L);
         assertThat(content.choose("FOOD", List.of(1L, 2L, 3L, 4L, 5L))).isNotNull();
         jdbc.update("update liar_keyword set active = false where category_id = 1 and id <> 1");
@@ -45,6 +50,10 @@ class MySqlIntegrationTest extends HttpWebSocketIntegrationTest {
         for (int i = 0; i < 20; i++) assertThat(content.choose("RANDOM", List.of()).id()).isGreaterThan(5L);
         jdbc.update("update liar_keyword set active = false");
         assertThatThrownBy(() -> content.choose("RANDOM", List.of())).isInstanceOfSatisfying(com.noopi.api.DomainException.class,
+            e -> assertThat(e.code()).isEqualTo(NO_AVAILABLE_KEYWORD));
+        assertThat(blindContent.chooseDistinct(2, List.of())).hasSize(2);
+        jdbc.update("update blind_keyword set active = false where id <> 1");
+        assertThatThrownBy(() -> blindContent.chooseDistinct(2, List.of())).isInstanceOfSatisfying(com.noopi.api.DomainException.class,
             e -> assertThat(e.code()).isEqualTo(NO_AVAILABLE_KEYWORD));
     }
 }

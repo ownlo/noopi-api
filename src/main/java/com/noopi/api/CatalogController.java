@@ -12,7 +12,9 @@ public class CatalogController {
     public CatalogController(LiarContent content) { this.content = content; }
     public record Game(String gameType, String name, int minPlayers, int maxPlayers, boolean enabled) {}
     @GetMapping public Map<String, List<Game>> games() {
-        return Map.of("games", List.of(new Game("LIAR", "라이어 게임", 3, 12, true)));
+        return Map.of("games", List.of(
+            new Game("LIAR", "라이어 게임", 3, 12, true),
+            new Game("BLIND", "블라인드 게임", 2, 2, true)));
     }
     @GetMapping("/liar/categories") public Map<String, List<LiarContent.Category>> categories() {
         return Map.of("categories", content.categories());

@@ -25,6 +25,7 @@ NOOPI MVP에서 MySQL에 영구 저장하는 데이터의 범위를 정의한다
 ### MySQL
 - `liar_category`
 - `liar_keyword`
+- `blind_keyword`
 
 MVP에서 Room/GameSession/Role/Vote 테이블을 만들지 않는다.
 
@@ -77,14 +78,34 @@ INDEX(category_id, active)
 
 각 제시어는 하나의 실제 카테고리에 속한다.
 
-블라인드 게임은 별도 제시어 테이블을 만들지 않고 활성 `liar_keyword`
-레코드를 공통 제시어 풀로 재사용한다. 내부 `category_id`는 유지하지만
-블라인드 게임의 선정 조건, API 응답 또는 화면에는 카테고리를 사용하거나
-노출하지 않는다. 서로 다른 두 `liar_keyword.id`를 선택해야 한다.
+라이어 제시어는 블라인드 게임과 공유하지 않는다.
+
+## 5-1. blind_keyword
+
+목적: 카테고리가 없는 블라인드 게임 전용 제시어.
+
+권장 컬럼:
+```text
+id           BIGINT PK AUTO_INCREMENT
+keyword      VARCHAR(255) NOT NULL
+active       BOOLEAN NOT NULL
+created_at   DATETIME(6) NOT NULL
+updated_at   DATETIME(6) NOT NULL
+```
+
+제약/Index:
+```text
+UNIQUE(keyword)
+INDEX(active)
+```
+
+블라인드 게임은 활성 `blind_keyword` 중 서로 다른 두 id를 선택한다.
+카테고리 컬럼이나 별도 카테고리 테이블을 사용하지 않는다.
 
 ## 6. 정답 정규화
-서버는 실제 `liar_keyword.keyword`와 추측 답안에서 모든 공백 문자를 제거한
-값이 정확히 같은지 비교한다.
+서버는 각 게임의 실제 제시어와 추측 답안에서 모든 공백 문자를 제거한
+값이 정확히 같은지 비교한다. 라이어는 `liar_keyword.keyword`, 블라인드는
+`blind_keyword.keyword`를 사용한다.
 
 - 띄어쓰기 차이만 허용
 - 대소문자 차이 불허
@@ -133,6 +154,7 @@ JPA Entity는 영구 콘텐츠만 표현한다.
 ```text
 LiarCategoryEntity
 LiarKeywordEntity
+BlindKeywordEntity
 ```
 
 Runtime 객체에 `@Entity`를 붙이지 않는다.
@@ -148,12 +170,14 @@ Admin UI는 MVP 필수 범위가 아니다.
 V1__create_liar_category.sql
 V2__create_liar_keyword.sql
 V3__drop_liar_keyword_accepted_answer.sql
+V4__create_blind_keyword.sql
 ```
 
 필요하면 초기 migration을 합칠 수 있다.
 
 ## 15. Seed
-개발/MVP 구동에 필요한 카테고리와 제시어를 Flyway seed로 제공할 수 있다.
+개발/MVP 구동에 필요한 라이어 카테고리·제시어와 블라인드 제시어를 Flyway
+seed로 제공할 수 있다.
 
 Frontend에는 카테고리/제시어를 하드코딩하지 않는다.
 
@@ -183,6 +207,17 @@ CREATE TABLE liar_keyword (
     KEY idx_liar_keyword_category_active (category_id, active),
     CONSTRAINT fk_liar_keyword_category
         FOREIGN KEY (category_id) REFERENCES liar_category(id)
+);
+
+CREATE TABLE blind_keyword (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    keyword VARCHAR(255) NOT NULL,
+    active BOOLEAN NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_blind_keyword_keyword (keyword),
+    KEY idx_blind_keyword_active (active)
 );
 
 ```

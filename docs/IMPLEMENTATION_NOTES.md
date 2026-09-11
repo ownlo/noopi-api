@@ -4,8 +4,8 @@
 
 공통 `BLIND_GAME_SPEC.md`와 API/Realtime 계약에 `BLIND`를 추가했다.
 
-Backend는 기존 Room, GameSession, `/state`, WebSocket 갱신 구조와 활성
-제시어 Repository를 재사용한다. 블라인드 전용 Runtime은 Player별 제시어
+Backend는 기존 Room, GameSession, `/state`, WebSocket 갱신 구조를 재사용하고
+제시어는 카테고리 없는 블라인드 전용 Repository에서 조회한다. 블라인드 전용 Runtime은 Player별 제시어
 배정, `GUESSING` phase와 승자만 관리하며 질문·턴·타이머 상태는 만들지
 않는다.
 

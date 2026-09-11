@@ -1,6 +1,8 @@
 package com.noopi.application;
 
 import com.noopi.api.Responses;
+import com.noopi.game.blind.BlindGameService;
+import com.noopi.game.blind.BlindStateProjection;
 import com.noopi.game.liar.LiarGameService;
 import com.noopi.game.liar.LiarStateProjection;
 import com.noopi.game.session.GameSessionRuntime;
@@ -18,12 +20,16 @@ public class GameApplication {
     private final RoomStore rooms;
     private final LiarGameService liar;
     private final LiarStateProjection projection;
+    private final BlindGameService blind;
+    private final BlindStateProjection blindProjection;
     private final RoomEvents events;
     private final Clock clock;
     private final Duration disconnectGrace;
     public GameApplication(RoomStore rooms, LiarGameService liar, LiarStateProjection projection,
+                           BlindGameService blind, BlindStateProjection blindProjection,
                            RoomEvents events, Clock clock, @Value("${noopi.disconnect-grace:PT2M}") Duration disconnectGrace) {
         this.rooms = rooms; this.liar = liar; this.projection = projection;
+        this.blind = blind; this.blindProjection = blindProjection;
         this.events = events; this.clock = clock; this.disconnectGrace = disconnectGrace;
     }
     public Responses.CreatedRoom create(String clientId, String nickname, String gender) {
@@ -57,7 +63,7 @@ public class GameApplication {
     public void leave(long roomId, String clientId) {
         rooms.inRoom(roomId, r -> {
             var p = r.player(clientId);
-            liar.playerLeft(r, p.id);
+            if (r.session != null && "LIAR".equals(r.session.gameType)) liar.playerLeft(r, p.id);
             r.players.remove(p.id);
             events.closePlayer(r.id, p.id);
             events.publish(r, "PLAYER_LEFT", null, Map.of("playerId", p.id));
@@ -75,7 +81,7 @@ public class GameApplication {
             var players = r.players.values().stream().map(p -> new Responses.RoomPlayer(p.id, p.nickname,
                 p.gender.name(), p.id == r.hostPlayerId, p.connectionStatus.name(), r.session != null && r.session.active(p.id))).toList();
             var session = r.session == null ? null : new Responses.SessionState(r.session.id, r.session.gameType,
-                r.session.status.name(), projection.project(r.session, me.id));
+                r.session.status.name(), project(r.session, me.id));
             return new Responses.State(new Responses.RoomState(r.id, r.code, r.status(), r.hostPlayerId), player(r, me), players, session);
         });
     }
@@ -83,40 +89,56 @@ public class GameApplication {
         return rooms.inRoom(roomId, r -> {
             r.requireHost(r.player(clientId));
             ACTIVE_GAME_SESSION_EXISTS.require(r.session == null || r.session.ended());
-            UNSUPPORTED_GAME_TYPE.require("LIAR".equals(type));
-            INVALID_GAME_CONFIG.require(category != null && !category.isBlank());
-            var runtime = liar.prepare(category);
+            UNSUPPORTED_GAME_TYPE.require("LIAR".equals(type) || "BLIND".equals(type));
+            if ("BLIND".equals(type)) blind.requirePlayerCount(r);
+            INVALID_GAME_CONFIG.require("LIAR".equals(type) ? category != null && !category.isBlank() : category == null);
+            var runtime = "LIAR".equals(type) ? liar.prepare(category) : blind.prepare();
             r.session = new GameSessionRuntime(rooms.nextId(), type, runtime);
             events.game(r, "GAME_SESSION_CREATED", Map.of("gameType", type));
             return new Responses.Session(r.session.id, type, r.session.status.name());
         });
     }
     public void start(long roomId, long sessionId, String clientId) {
-        rooms.inRoom(roomId, r -> { r.requireHost(r.player(clientId)); session(r, sessionId); liar.start(r); return null; });
+        rooms.inRoom(roomId, r -> {
+            r.requireHost(r.player(clientId)); session(r, sessionId);
+            if ("LIAR".equals(r.session.gameType)) liar.start(r); else blind.start(r);
+            return null;
+        });
     }
     public void cancel(long roomId, long sessionId, String clientId) {
-        rooms.inRoom(roomId, r -> { r.requireHost(r.player(clientId)); session(r, sessionId); liar.cancel(r, "HOST_CANCELLED"); return null; });
+        rooms.inRoom(roomId, r -> {
+            r.requireHost(r.player(clientId)); session(r, sessionId);
+            if ("LIAR".equals(r.session.gameType)) liar.cancel(r, "HOST_CANCELLED"); else blind.cancel(r, "HOST_CANCELLED");
+            return null;
+        });
     }
     public void roleCheck(long roomId, long sessionId, String clientId) {
-        rooms.inRoom(roomId, r -> { var p = r.player(clientId); session(r, sessionId); liar.roleCheck(r, p.id); return null; });
+        rooms.inRoom(roomId, r -> { var p = r.player(clientId); session(r, sessionId); requireType(r, "LIAR"); liar.roleCheck(r, p.id); return null; });
     }
     public Responses.VoteRound startVote(long roomId, long sessionId, String clientId) {
         return rooms.inRoom(roomId, r -> {
-            var p = r.player(clientId); r.requireHost(p); session(r, sessionId);
+            var p = r.player(clientId); r.requireHost(p); session(r, sessionId); requireType(r, "LIAR");
             return new Responses.VoteRound(liar.startVote(r, p.id));
         });
     }
     public void vote(long roomId, long sessionId, String clientId, Long round, Long target) {
-        rooms.inRoom(roomId, r -> { var p = r.player(clientId); session(r, sessionId); liar.vote(r, p.id, round, target); return null; });
+        rooms.inRoom(roomId, r -> { var p = r.player(clientId); session(r, sessionId); requireType(r, "LIAR"); liar.vote(r, p.id, round, target); return null; });
     }
     public Responses.Guess guess(long roomId, long sessionId, String clientId, String answer) {
         return rooms.inRoom(roomId, r -> {
-            var p = r.player(clientId); session(r, sessionId); return new Responses.Guess(liar.guess(r, p.id, answer));
+            var p = r.player(clientId); session(r, sessionId); requireType(r, "LIAR"); return new Responses.Guess(liar.guess(r, p.id, answer));
+        });
+    }
+    public Responses.Guess blindGuess(long roomId, long sessionId, String clientId, String answer) {
+        return rooms.inRoom(roomId, r -> {
+            var p = r.player(clientId); session(r, sessionId);
+            requireType(r, "BLIND");
+            return new Responses.Guess(blind.guess(r, p.id, answer));
         });
     }
     public void exclude(long roomId, long sessionId, String clientId, long playerId) {
         rooms.inRoom(roomId, r -> {
-            r.requireHost(r.player(clientId)); session(r, sessionId); r.session.requireParticipant(playerId);
+            r.requireHost(r.player(clientId)); session(r, sessionId); requireType(r, "LIAR"); r.session.requireParticipant(playerId);
             var p = r.players.get(playerId);
             PLAYER_NOT_IN_GAME.require(p != null);
             PLAYER_NOT_DISCONNECTED.require(p.connectionStatus == PlayerRuntime.ConnectionStatus.DISCONNECTED);
@@ -128,6 +150,13 @@ public class GameApplication {
     }
     private void session(RoomRuntime room, long id) {
         GAME_SESSION_NOT_FOUND.require(room.session != null && room.session.id == id);
+    }
+    private void requireType(RoomRuntime room, String type) {
+        INVALID_GAME_PHASE.require(type.equals(room.session.gameType));
+    }
+    private Map<String, Object> project(GameSessionRuntime session, long requester) {
+        return "LIAR".equals(session.gameType) ? projection.project(session, requester)
+            : blindProjection.project(session, requester);
     }
     private static void requireClient(String id) { PLAYER_NOT_IN_ROOM.require(id != null && !id.isBlank()); }
     private static void requireConnectedHost(RoomRuntime room) {

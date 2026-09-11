@@ -44,7 +44,11 @@ class HttpWebSocketIntegrationTest {
         assertThat(categories.get(0).get("code").asText()).isEqualTo("RANDOM");
         assertThat(categories.get(0).get("virtual").asBoolean()).isTrue();
         assertThat(categories.size()).isEqualTo(4);
-        assertThat(body(request("GET", "/api/games", null, null), 200).at("/games/0/maxPlayers").asInt()).isEqualTo(12);
+        var games = body(request("GET", "/api/games", null, null), 200).get("games");
+        assertThat(games.get(0).get("maxPlayers").asInt()).isEqualTo(12);
+        assertThat(games.get(1).get("gameType").asText()).isEqualTo("BLIND");
+        assertThat(games.get(1).get("minPlayers").asInt()).isEqualTo(2);
+        assertThat(games.get(1).get("maxPlayers").asInt()).isEqualTo(2);
         String host = client();
         var created = body(request("POST", "/api/rooms", host, playerBody(" 방장 ")), 201);
         long room = created.at("/room/roomId").asLong();
@@ -58,7 +62,47 @@ class HttpWebSocketIntegrationTest {
         assertThat(request("GET", "/api/rooms/" + room + "/state", null, null).statusCode()).isEqualTo(403);
         assertThat(request("GET", "/api/games/liar/keywords", null, null).statusCode()).isEqualTo(404);
         assertThat(body(request("GET", "/actuator/health", null, null), 200).get("status").asText()).isEqualTo("UP");
-        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(15);
+        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(16);
+    }
+
+    @Test void fullBlindHttpFlowUsesPersonalizedStateAndServerWinner() throws Exception {
+        String host = client();
+        var created = body(request("POST", "/api/rooms", host, playerBody("방장")), 201);
+        long room = created.at("/room/roomId").asLong();
+        long hostId = created.at("/me/playerId").asLong();
+        String guest = client();
+        long guestId = body(request("POST", "/api/rooms/" + room + "/players", guest, playerBody("손님")), 201)
+            .get("playerId").asLong();
+        var listener = new Listener(); connect(room, host, listener);
+        String roomPath = "/api/rooms/" + room;
+        long session = body(request("POST", roomPath + "/game-sessions", host,
+            "{\"gameType\":\"BLIND\",\"config\":{}}"), 201).get("gameSessionId").asLong();
+        String gamePath = roomPath + "/game-sessions/" + session;
+        assertThat(request("POST", gamePath + "/start", host, null).statusCode()).isEqualTo(204);
+
+        var hostState = body(request("GET", roomPath + "/state", host, null), 200).at("/gameSession/gameState");
+        var guestState = body(request("GET", roomPath + "/state", guest, null), 200).at("/gameSession/gameState");
+        String hostKeyword = guestState.get("opponentKeyword").asText();
+        String guestKeyword = hostState.get("opponentKeyword").asText();
+        assertThat(hostKeyword).isNotEqualTo(guestKeyword);
+        assertThat(hostState.at("/opponentPlayer/playerId").asLong()).isEqualTo(guestId);
+        assertThat(guestState.at("/opponentPlayer/playerId").asLong()).isEqualTo(hostId);
+        assertThat(hostState.toString()).doesNotContain(hostKeyword, "myKeyword", "keywordAssignments");
+        assertThat(guestState.toString()).doesNotContain(guestKeyword, "myKeyword", "keywordAssignments");
+
+        assertThat(body(request("POST", gamePath + "/blind/guesses", host, "{\"answer\":\"오답\"}"), 200)
+            .get("correct").asBoolean()).isFalse();
+        assertThat(body(request("POST", gamePath + "/blind/guesses", host,
+            json.writeValueAsString(Map.of("answer", hostKeyword))), 200).get("correct").asBoolean()).isTrue();
+        assertThat(body(request("POST", gamePath + "/blind/guesses", guest,
+            json.writeValueAsString(Map.of("answer", guestKeyword))), 409).get("code").asText())
+            .isEqualTo("GAME_SESSION_ALREADY_FINISHED");
+        var result = body(request("GET", roomPath + "/state", guest, null), 200)
+            .at("/gameSession/gameState/result");
+        assertThat(result.at("/winnerPlayer/playerId").asLong()).isEqualTo(hostId);
+        assertThat(result.get("keywordAssignments").size()).isEqualTo(2);
+        listener.awaitType("GAME_FINISHED");
+        assertThat(String.join("\n", listener.received)).doesNotContain(hostKeyword, guestKeyword);
     }
 
     @Test void fullHttpGameFlowAndBroadcastPrivacy() throws Exception {

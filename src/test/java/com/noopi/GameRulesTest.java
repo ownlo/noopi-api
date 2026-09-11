@@ -5,6 +5,7 @@ import com.noopi.api.*;
 import com.noopi.application.*;
 import com.noopi.content.LiarContent;
 import com.noopi.game.liar.*;
+import com.noopi.game.blind.*;
 import com.noopi.realtime.RoomEvents;
 import com.noopi.room.*;
 import java.time.*;
@@ -55,7 +56,11 @@ class GameRulesTest {
             public Keyword choose(String code, Collection<Long> recent) { return new Keyword(1, "바다"); }
         };
         liarService = new LiarGameService(content, random, events, 10);
-        app = new GameApplication(store, liarService, new LiarStateProjection(), events, clock, Duration.ofMinutes(2));
+        app = new GameApplication(store, liarService, new LiarStateProjection(),
+            new BlindGameService((count, recent) -> List.of(
+                new com.noopi.content.BlindContent.Keyword(1, "바다"),
+                new com.noopi.content.BlindContent.Keyword(2, "기린")), events, 10),
+            new BlindStateProjection(), events, clock, Duration.ofMinutes(2));
     }
     void createPlayers(int count) {
         var result = app.create("c0", "참가0", "MALE");

@@ -95,9 +95,10 @@ class RoomRuntime {
 GameSession은 Player별 제시어 공개 규칙이나 승리 조건을 알지 않는다.
 
 ## 7. Persistence
-MySQL은 영구 관리가 필요한 라이어 게임 콘텐츠에 사용한다.
+MySQL은 영구 관리가 필요한 게임별 콘텐츠에 사용한다.
 - LiarCategory
 - LiarKeyword
+- BlindKeyword
 
 Room, Player, GameSession, Role, Vote는 MVP에서 JPA Entity로 만들지 않는다. 상세 스키마는 `DATABASE.md`를 따른다.
 
@@ -183,9 +184,9 @@ API, `/state`, WebSocket 이벤트에 다른 Player의 `voterPlayerId → target
 
 ## 16-1. Blind Game Runtime
 
-블라인드 게임은 정확히 두 명의 참가자를 가진다. 시작 시 기존 활성
-제시어 Repository를 사용해 서로 다른 제시어 두 개를 선택하고 Player별로
-배정한다. 카테고리는 선택 조건이나 공개 정보로 사용하지 않는다.
+블라인드 게임은 정확히 두 명의 참가자를 가진다. 시작 시 라이어 콘텐츠와
+분리된 활성 BlindKeyword Repository를 사용해 서로 다른 제시어 두 개를
+선택하고 Player별로 배정한다. 블라인드 제시어는 카테고리를 갖지 않는다.
 
 Runtime 원본에는 두 배정을 보관할 수 있지만 `/state` Projection은
 `GUESSING` 동안 요청 Player의 배정값을 제외하고 상대방의 제시어만
