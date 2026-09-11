@@ -82,6 +82,7 @@ REST로 행동을 제출하며 역할/제시어는 개인별 `/state`로 조회�
 - `room`: 게임 규칙을 모르는 Room/Player Runtime, RoomStore.
 - `game/session`: 한 판의 상태와 시작 시 참가자 snapshot.
 - `game/liar`: 라이어 규칙, 비공개 runtime, 개인별 allowlist projection.
+- `game/blind`: 블라인드 제시어 배정, 개인별 상대 제시어 projection, 정답 판정과 원자적 승자 확정.
 - `application`: Room 잠금 안에서 REST 행동을 조정, TTL 및 장기 disconnect 처리.
 - `content`: 콘텐츠 3개 JPA Entity, Repository, 활성 콘텐츠 선택.
 - `realtime`: Room 검증, 연결 관리, 계약에 정의된 공개 이벤트 전달.

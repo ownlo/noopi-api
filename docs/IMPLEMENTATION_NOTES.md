@@ -1,5 +1,18 @@
 # MVP 구현 결정과 SPEC 정합성
 
+## 블라인드 게임 명세 추가
+
+공통 `BLIND_GAME_SPEC.md`와 API/Realtime 계약에 `BLIND`를 추가했다.
+
+Backend는 기존 Room, GameSession, `/state`, WebSocket 갱신 구조와 활성
+제시어 Repository를 재사용한다. 블라인드 전용 Runtime은 Player별 제시어
+배정, `GUESSING` phase와 승자만 관리하며 질문·턴·타이머 상태는 만들지
+않는다.
+
+동시 정답은 Room 단위 동시성 경계에서 한 명만 승자로 확정한다. 명시적
+퇴장 또는 장기 미접속 시 승패/취소 정책은 아직 확정되지 않았으므로 임의
+구현하지 않는다.
+
 ## 확정 규칙 정정
 
 현재 SPEC: LIAR_GAME_SPEC 18절/29절 일부 문구가 개인 투표 공개·최대 재투표 2회·랜덤 지목을 기술했다.

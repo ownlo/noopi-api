@@ -9,6 +9,7 @@
 - `docs/common/REALTIME_SPEC.md`
 - `docs/common/API_SPEC.md`
 - `docs/common/games/LIAR_GAME_SPEC.md`
+- `docs/common/games/BLIND_GAME_SPEC.md`
 
 Backend 전용 구현 원칙은 이 문서와 `DATABASE.md`를 따른다. 공통 계약과 충돌할 경우 공통 계약을 임의로 변경하지 말고 충돌을 보고한다.
 
@@ -38,6 +39,7 @@ Mobile Web
  ├─ Room / Player Runtime
  ├─ GameSession Runtime
  ├─ Liar Game Runtime
+ ├─ Blind Game Runtime
  ├─ Realtime
  └─ Persistence
        ↓
@@ -74,6 +76,7 @@ MVP에서 다음은 서버 Memory에 둔다.
 - 선정된 제시어와 첫 발언자
 - 투표, voteRound, 재투표 후보
 - 라이어 최종 추측과 게임 결과
+- 블라인드 Player별 제시어 배정, 정답 시도와 승자
 - 최근 사용 제시어 식별값
 - WebSocket 연결 관련 Runtime 정보
 
@@ -87,6 +90,9 @@ class RoomRuntime {
 ```
 
 라이어 상세 상태는 `LiarGameRuntime`이 소유한다.
+
+블라인드 상세 상태는 `BlindGameRuntime`이 소유한다. Room과 공통
+GameSession은 Player별 제시어 공개 규칙이나 승리 조건을 알지 않는다.
 
 ## 7. Persistence
 MySQL은 영구 관리가 필요한 라이어 게임 콘텐츠에 사용한다.
@@ -175,6 +181,23 @@ API, `/state`, WebSocket 이벤트에 다른 Player의 `voterPlayerId → target
 
 정답 판정은 서버가 수행한다. 실제 제시어와 추측 답안에서 모든 공백 문자를 제거한 값이 정확히 같을 때만 정답이다. 띄어쓰기 외의 문자 차이와 대소문자 차이는 허용하지 않으며 별칭 정답은 관리하지 않는다. LLM 의미 판정은 MVP 범위가 아니다.
 
+## 16-1. Blind Game Runtime
+
+블라인드 게임은 정확히 두 명의 참가자를 가진다. 시작 시 기존 활성
+제시어 Repository를 사용해 서로 다른 제시어 두 개를 선택하고 Player별로
+배정한다. 카테고리는 선택 조건이나 공개 정보로 사용하지 않는다.
+
+Runtime 원본에는 두 배정을 보관할 수 있지만 `/state` Projection은
+`GUESSING` 동안 요청 Player의 배정값을 제외하고 상대방의 제시어만
+포함한다. 전체 Runtime 객체를 직렬화하지 않는다.
+
+정답 제출은 Room 단위 동시성 경계 안에서 검증·판정한다. 오답이면 phase를
+유지하고 이후 제출을 허용한다. 정답이면 승자 기록과 `FINISHED` 전환을
+원자적으로 수행한다. 먼저 종료를 확정한 요청 이후의 요청은 공통 계약의
+`GAME_SESSION_ALREADY_FINISHED`로 거부한다.
+
+질문, 답변, 순서, 턴, 질문 횟수와 타이머 상태는 Runtime에 추가하지 않는다.
+
 ## 17. Disconnect / Reconnect
 WebSocket 연결 종료는 Room 탈퇴가 아니다. Player를 `DISCONNECTED`로 표시하고 일정 시간 재접속을 허용한다.
 
@@ -207,6 +230,7 @@ Host가 Disconnect되어도 Room을 자동 종료하거나 Host 권한을 이전
 - 마지막 투표들의 동시 요청
 - 투표 완료 집계와 phase 전환
 - disconnect/exclude와 vote submit 경합
+- 블라인드 동시 정답 제출과 승자 확정
 
 전역 Lock 하나로 모든 Room을 직렬화하지 않는다.
 

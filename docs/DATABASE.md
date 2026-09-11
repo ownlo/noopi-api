@@ -3,7 +3,8 @@
 ## 1. 목적
 NOOPI MVP에서 MySQL에 영구 저장하는 데이터의 범위를 정의한다.
 
-공통 게임 진행 상태는 서버 In-Memory Runtime이 관리하며 MySQL은 라이어 게임의 영구 콘텐츠를 관리한다.
+공통 게임 진행 상태는 서버 In-Memory Runtime이 관리하며 MySQL은 게임에서
+재사용하는 영구 제시어 콘텐츠를 관리한다.
 
 ## 2. 저장 경계
 ### In-Memory
@@ -19,6 +20,7 @@ NOOPI MVP에서 MySQL에 영구 저장하는 데이터의 범위를 정의한다
 - 최종 추측 / 승패
 - 연결 상태
 - 같은 Room의 최근 사용 제시어
+- Blind Game phase / Player별 제시어 배정 / 승자
 
 ### MySQL
 - `liar_category`
@@ -74,6 +76,11 @@ INDEX(category_id, active)
 ```
 
 각 제시어는 하나의 실제 카테고리에 속한다.
+
+블라인드 게임은 별도 제시어 테이블을 만들지 않고 활성 `liar_keyword`
+레코드를 공통 제시어 풀로 재사용한다. 내부 `category_id`는 유지하지만
+블라인드 게임의 선정 조건, API 응답 또는 화면에는 카테고리를 사용하거나
+노출하지 않는다. 서로 다른 두 `liar_keyword.id`를 선택해야 한다.
 
 ## 6. 정답 정규화
 서버는 실제 `liar_keyword.keyword`와 추측 답안에서 모든 공백 문자를 제거한

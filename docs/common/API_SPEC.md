@@ -6,8 +6,8 @@
 이벤트 계약을 정의한다.
 
 공통 서비스 규칙은 `SERVICE_SPEC.md`, GameSession 생명주기는
-`GAME_SESSION_SPEC.md`, 실시간 원칙은 `REALTIME_SPEC.md`, 라이어 게임
-규칙은 `games/LIAR_GAME_SPEC.md`를 따른다.
+`GAME_SESSION_SPEC.md`, 실시간 원칙은 `REALTIME_SPEC.md`, 게임별 규칙은
+`games/LIAR_GAME_SPEC.md`와 `games/BLIND_GAME_SPEC.md`를 따른다.
 
 서버의 현재 상태가 Source of Truth이며, 클라이언트는 게임
 상태·역할·승패·투표 결과를 자체 계산하지 않는다.
@@ -444,6 +444,23 @@ Response `200 OK` 예시:
 다른 Player가 누구에게 투표했는지도 투표 전·진행 중·종료 후 모두
 반환하지 않는다.
 
+블라인드 게임 `GUESSING` 단계의 `gameState` 예:
+
+``` json
+{
+  "type": "BLIND",
+  "phase": "GUESSING",
+  "opponentPlayer": {
+    "playerId": 12,
+    "nickname": "종윤"
+  },
+  "opponentKeyword": "기린"
+}
+```
+
+게임 종료 전에는 현재 Player 본인의 실제 제시어를 응답에 포함하지 않는다.
+상대방의 제시어 카테고리도 반환하지 않는다.
+
 ------------------------------------------------------------------------
 
 # Game Catalog API
@@ -464,6 +481,13 @@ Response `200 OK`:
       "name": "라이어 게임",
       "minPlayers": 3,
       "maxPlayers": 12,
+      "enabled": true
+    },
+    {
+      "gameType": "BLIND",
+      "name": "블라인드 게임",
+      "minPlayers": 2,
+      "maxPlayers": 2,
       "enabled": true
     }
   ]
@@ -548,6 +572,18 @@ Request --- 라이어 게임:
 }
 ```
 
+Request --- 블라인드 게임:
+
+``` json
+{
+  "gameType": "BLIND",
+  "config": {}
+}
+```
+
+블라인드 게임에는 카테고리 설정이 없다. Client가 카테고리 값을 보내면
+`INVALID_GAME_CONFIG`를 반환한다.
+
 Response `201 Created`:
 
 ``` json
@@ -558,23 +594,10 @@ Response `201 Created`:
 }
 ```
 
+응답의 `gameType`은 요청한 게임 타입을 그대로 반환한다. 블라인드 게임이면
+`BLIND`를 반환한다.
+
 생성 시점에는 아직 역할/제시어를 클라이언트에 공개하지 않는다.
-
-GameSession 생성 후 `GET /api/rooms/{roomId}/state`의 `READY` 게임 상태는
-선택한 카테고리를 모든 Room Player에게 반환한다. 방장이 아닌 참가자와
-새로고침한 사용자도 준비 화면을 서버 상태로 복구할 수 있다.
-
-``` json
-{
-  "type": "LIAR",
-  "phase": "READY",
-  "categoryCode": "FOOD",
-  "categoryName": "음식"
-}
-```
-
-`RANDOM`을 선택한 경우 `categoryCode`는 `RANDOM`, `categoryName`은
-카테고리 목록 API가 제공하는 가상 카테고리 표시 이름인 `랜덤`이다.
 
 주요 오류:
 
@@ -619,6 +642,16 @@ Response:
 → 역할 배정
 → GameSession PLAYING
 → Liar phase ROLE_REVEAL
+```
+
+블라인드 게임의 경우 서버가 다음을 수행한다.
+
+``` text
+참가 인원이 정확히 2명인지 검증
+→ 전체 활성 제시어 풀에서 서로 다른 제시어 2개 선정
+→ Player별 제시어 배정
+→ GameSession PLAYING
+→ Blind phase GUESSING
 ```
 
 주요 오류:
@@ -972,23 +1005,6 @@ PLAYER_NOT_EXCLUDABLE
 
 최종 지목자가 실제 라이어일 때만 `LIAR_GUESS` 단계로 진입한다.
 
-`LIAR_GUESS` 단계의 `GET /state`는 최종 지목으로 이미 공개된 라이어를
-모든 참가자에게 반환한다. 시민은 이 정보로 추측 중인 Player를 표시할 수
-있다. 게임 진행 중 제시어 공개 규칙은 그대로 유지한다.
-
-``` json
-{
-  "type": "LIAR",
-  "phase": "LIAR_GUESS",
-  "myRole": "CITIZEN",
-  "keyword": "바다",
-  "liarPlayer": {
-    "playerId": 13,
-    "nickname": "예은"
-  }
-}
-```
-
 이 API는 실제 라이어만 호출할 수 있다.
 
 ``` http
@@ -1019,10 +1035,6 @@ Response `200 OK`:
 
 제출과 동시에 서버가 정답을 판정하고 게임을 종료한다.
 
-실제 제시어와 추측 답안에서 모든 공백 문자를 제거한 값이 정확히 같을 때만
-정답으로 판정한다. 띄어쓰기 외의 문자 차이와 대소문자 차이는 허용하지
-않으며, 별칭 또는 별도의 허용 정답은 관리하지 않는다.
-
 한 번 제출한 답은 변경할 수 없다.
 
 시민이 호출하면 서버에서 거부한다.
@@ -1039,9 +1051,69 @@ INVALID_ANSWER
 
 ------------------------------------------------------------------------
 
+# Blind Game Action API
+
+## 22. 블라인드 게임 정답 제출
+
+게임 참가자는 자신에게 배정된 제시어라고 추리한 답을 제출한다.
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/blind/guesses
+```
+
+Header:
+
+``` text
+X-Client-Id: <clientId>
+```
+
+Request:
+
+``` json
+{
+  "answer": "피자"
+}
+```
+
+오답 Response `200 OK`:
+
+``` json
+{
+  "correct": false
+}
+```
+
+오답이어도 `GUESSING` 단계를 유지한다. 탈락, 턴 변경, 시도 횟수 제한은
+없으며 상대방에게 오답 사실이나 답안 내용을 공개하지 않는다.
+
+최초 정답 Response `200 OK`:
+
+``` json
+{
+  "correct": true
+}
+```
+
+서버는 제출 Player 본인에게 배정된 제시어와 답안을 비교한다. 정답이면
+해당 Player를 승자로 확정하고 GameSession을 즉시 `FINISHED`로 변경한다.
+거의 동시에 정답이 제출되어도 승자 확정과 종료 전환을 하나의 원자적
+처리로 수행하여 승자는 정확히 한 명이어야 한다. 종료가 먼저 확정된 뒤
+도착한 요청은 `GAME_SESSION_ALREADY_FINISHED`를 반환한다.
+
+주요 오류:
+
+``` text
+PLAYER_NOT_IN_GAME
+INVALID_GAME_PHASE
+INVALID_ANSWER
+GAME_SESSION_ALREADY_FINISHED
+```
+
+------------------------------------------------------------------------
+
 # Finished State
 
-## 22. 라이어 게임 최종 결과
+## 23. 라이어 게임 최종 결과
 
 게임 종료 후 `GET /state`에서는 전체 참가자에게 최종 결과를 공개한다.
 
@@ -1094,11 +1166,40 @@ INVALID_ANSWER
 
 게임 종료 후에는 실제 라이어와 제시어를 전체 참가자에게 공개할 수 있다.
 
+### 블라인드 게임 최종 결과
+
+``` json
+{
+  "type": "BLIND",
+  "phase": "FINISHED",
+  "result": {
+    "winnerPlayer": {
+      "playerId": 13,
+      "nickname": "예은"
+    },
+    "keywordAssignments": [
+      {
+        "playerId": 12,
+        "nickname": "종윤",
+        "keyword": "피자"
+      },
+      {
+        "playerId": 13,
+        "nickname": "예은",
+        "keyword": "기린"
+      }
+    ]
+  }
+}
+```
+
+종료 후에는 두 Player의 실제 제시어를 두 참가자 모두에게 공개한다.
+
 ------------------------------------------------------------------------
 
 # WebSocket API
 
-## 23. 연결
+## 24. 연결
 
 개념적 WebSocket endpoint:
 
@@ -1117,7 +1218,7 @@ WebSocket은 상태 저장소가 아니다. 연결 직후 또는 재접속 후�
 
 ------------------------------------------------------------------------
 
-## 24. 이벤트 공통 Envelope
+## 25. 이벤트 공통 Envelope
 
 ``` json
 {
@@ -1146,7 +1247,7 @@ WebSocket은 상태 저장소가 아니다. 연결 직후 또는 재접속 후�
 
 ------------------------------------------------------------------------
 
-## 25. Room 이벤트
+## 26. Room 이벤트
 
 ### PLAYER_JOINED
 
@@ -1221,7 +1322,7 @@ WebSocket은 상태 저장소가 아니다. 연결 직후 또는 재접속 후�
 
 ------------------------------------------------------------------------
 
-## 26. GameSession 이벤트
+## 27. GameSession 이벤트
 
 ### GAME_SESSION_CREATED
 
@@ -1275,7 +1376,7 @@ WebSocket은 상태 저장소가 아니다. 연결 직후 또는 재접속 후�
 
 ------------------------------------------------------------------------
 
-## 27. 라이어 게임 이벤트
+## 28. 라이어 게임 이벤트
 
 ### ROLE_CHECKED
 
@@ -1442,12 +1543,13 @@ Room broadcast:
 
 # Security / Information Exposure
 
-## 28. 절대 공개하면 안 되는 정보
+## 29. 절대 공개하면 안 되는 정보
 
 게임 종료 전 다음 정보를 권한 없는 Client에게 전달하지 않는다.
 
 -   다른 Player의 실제 역할
 -   라이어에게 현재 제시어
+-   블라인드 게임에서 종료 전 현재 Player 본인의 제시어
 -   전체 역할 배정 정보
 -   전체 제시어 목록
 -   다른 Player의 투표 대상
@@ -1460,7 +1562,7 @@ Backend DTO 생성 단계부터 현재 Player에게 허용된 정보만 포함�
 
 ------------------------------------------------------------------------
 
-## 29. 행동 권한 검증
+## 30. 행동 권한 검증
 
 모든 게임 행동 API에서 서버는 최소한 다음을 검증한다.
 
@@ -1481,7 +1583,7 @@ Frontend의 버튼 표시 여부는 권한 검증 수단이 아니다.
 
 # Idempotency / Duplicate Request
 
-## 30. 중복 요청 처리
+## 31. 중복 요청 처리
 
 네트워크 재시도 또는 더블 클릭으로 같은 요청이 여러 번 전달될 수 있다.
 
@@ -1491,10 +1593,15 @@ Frontend의 버튼 표시 여부는 권한 검증 수단이 아니다.
 -   역할 확인
 -   투표 제출
 -   라이어 추측 제출
+-   블라인드 게임에서 최초 정답에 따른 승자 확정
 -   GameSession 취소
 
 이미 완료된 행동을 다시 요청하면 상태에 따라 `409 Conflict`와 고정 오류
 코드를 반환한다.
+
+블라인드 게임의 오답 제출은 시도 횟수 제한이 없으므로 이후의 새 제출을
+막지 않는다. 단, 동일 요청의 전송 중 중복과 승자 확정 경쟁은 서버에서
+안전하게 처리한다.
 
 특히 투표는 다음 논리 키로 한 번만 허용한다.
 
@@ -1506,7 +1613,7 @@ gameSessionId + voteRound + voterPlayerId
 
 # Reconnect
 
-## 31. 재접속 처리
+## 32. 재접속 처리
 
 WebSocket 연결 종료 자체는 Room 탈퇴가 아니다.
 
@@ -1527,7 +1634,7 @@ WebSocket 재연결
 
 # API Error Codes
 
-## 32. 공통 오류 코드 목록
+## 33. 공통 오류 코드 목록
 
 ### Room / Player
 
@@ -1574,11 +1681,20 @@ PLAYER_NOT_DISCONNECTED
 PLAYER_NOT_EXCLUDABLE
 ```
 
+### Blind Game
+
+``` text
+NO_AVAILABLE_KEYWORD
+INVALID_GAME_PHASE
+INVALID_ANSWER
+GAME_SESSION_ALREADY_FINISHED
+```
+
 ------------------------------------------------------------------------
 
 # Frontend Integration Rules
 
-## 33. Frontend 구현 원칙
+## 34. Frontend 구현 원칙
 
 Frontend는 다음 규칙을 따른다.
 
@@ -1594,12 +1710,15 @@ Frontend는 다음 규칙을 따른다.
 7.  시민에게 라이어 전용 제시어 추측 UI를 표시하지 않는다.
 8.  다른 Player의 투표 대상을 저장하거나 표시하지 않는다.
 9.  전체 제시어 목록을 Frontend에 보관하지 않는다.
+10. 블라인드 게임에서는 `opponentKeyword`만 진행 화면에 표시하고 본인의
+    제시어를 추론하거나 별도 Client State에 저장하지 않는다.
+11. 블라인드 게임의 정답 여부와 승자는 서버 응답과 `/state`로만 확정한다.
 
 ------------------------------------------------------------------------
 
 # MVP Endpoint Summary
 
-## 34. REST Endpoint 목록
+## 35. REST Endpoint 목록
 
   ------------------------------------------------------------------------------------------------------------
   Method        Endpoint                                                                         설명
@@ -1642,11 +1761,14 @@ Frontend는 다음 규칙을 따른다.
 
   `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/liar/guess`                   라이어 최종
                                                                                                  추측
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/blind/guesses`                블라인드 정답
+                                                                                                 제출
   ------------------------------------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------
 
-## 35. 확정된 MVP API 원칙
+## 36. 확정된 MVP API 원칙
 
 -   REST는 사용자 행동과 현재 상태 조회에 사용한다.
 -   WebSocket은 Room/Game 상태 변경 알림에 사용한다.
@@ -1665,4 +1787,8 @@ Frontend는 다음 규칙을 따른다.
 -   단독 최다 득표자가 나올 때까지 재투표한다.
 -   서버가 동률 후보를 랜덤 지목하지 않는다.
 -   라이어 최종 추측은 실제 라이어에게만 허용한다.
+-   블라인드 게임은 정확히 2명일 때만 시작한다.
+-   블라인드 게임은 전체 활성 제시어 풀에서 서로 다른 제시어 2개를 선정한다.
+-   블라인드 게임의 카테고리는 선택하거나 공개하지 않는다.
+-   블라인드 게임은 최초 정답자 한 명만 원자적으로 승자로 확정한다.
 -   모든 승패 판정은 서버가 수행한다.

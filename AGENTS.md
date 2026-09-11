@@ -13,8 +13,9 @@
 3. `docs/common/REALTIME_SPEC.md`
 4. `docs/common/API_SPEC.md`
 5. `docs/common/games/LIAR_GAME_SPEC.md`
-6. `docs/BACKEND_ARCHITECTURE.md`
-7. `docs/DATABASE.md`
+6. `docs/common/games/BLIND_GAME_SPEC.md`
+7. `docs/BACKEND_ARCHITECTURE.md`
+8. `docs/DATABASE.md`
 
 공통 서비스/API/Realtime/Game 규칙은 `docs/common/`이 Source of Truth다.
 
@@ -73,11 +74,15 @@ Memory:
 - 투표/재투표
 - 최종 추측/결과
 - 연결 상태
+- 블라인드 게임의 Player별 제시어 배정/정답 시도/승자
 
 MySQL:
 - LiarCategory
 - LiarKeyword
 - LiarKeywordAcceptedAnswer
+
+블라인드 게임은 별도 콘텐츠 테이블을 만들지 않고 기존 활성 제시어 풀을
+재사용한다.
 
 Runtime 상태를 JPA Entity로 바꾸지 않는다. 개인별 투표를 DB에 영구 저장하지 않는다.
 
@@ -133,6 +138,17 @@ Frontend 계산/버튼 숨김을 권한 검증으로 신뢰하지 않는다.
 - 자기 자신 투표 금지
 - 라운드당 1회 투표
 - 제출한 투표 변경 금지
+
+## 11-1. 블라인드 게임 불변 규칙
+
+- 참가자 정확히 2명
+- 전체 활성 제시어 풀에서 서로 다른 제시어 2개 선정
+- 게임 종료 전 각 Player 본인의 제시어 비공개
+- 각 Player에게 상대방의 제시어만 제공
+- 카테고리 선택/공개 없음
+- 오답 페널티와 시도 횟수 제한 없음
+- 최초 정답자 1명만 원자적으로 승자 확정
+- 질문/답변/순서/턴/타이머는 서버가 관리하지 않음
 
 ## 12. 투표 비밀
 **다른 Player가 누구에게 투표했는지는 항상 비공개다.**
@@ -210,6 +226,10 @@ Room 단위 동시성 제어를 사용한다.
 
 특히 마지막 역할 확인/마지막 투표가 동시에 도착해도 phase 전환과 집계가 중복 실행되지 않게 한다.
 
+블라인드 게임에서 두 Player의 정답 요청이 동시에 도착해도 승자 확정과
+GameSession 종료를 하나의 원자적 변경으로 처리하여 승자가 한 명만
+생성되게 한다.
+
 모든 Room을 하나의 전역 Lock으로 막지 않는다.
 
 ## 20. Error
@@ -261,6 +281,12 @@ Room/Player/GameSession/Role/Vote용 테이블을 현재 MVP에 임의 추가하
 - guess 중복 제출 방지
 - 마지막 투표 동시성
 - reconnect 복구
+- 블라인드 게임 정확히 2명 검증
+- 블라인드 제시어 2개 상이성
+- 요청 Player 본인 제시어 비노출 / 상대방 제시어 노출
+- 블라인드 오답 후 무제한 재시도
+- 블라인드 동시 정답 제출 시 승자 1명 확정
+- 블라인드 종료 결과의 승자와 양쪽 제시어 공개
 
 ## 25. 구현 후
 최소 다음을 실행한다.
