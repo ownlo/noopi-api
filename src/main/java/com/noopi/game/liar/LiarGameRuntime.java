@@ -14,7 +14,7 @@ public final class LiarGameRuntime implements GameRuntime {
     Keyword keyword;
     long liarId;
     final Set<Long> checked = new HashSet<>();
-    Long firstSpeaker;
+    List<Long> speakingOrder = List.of();
     long voteRound;
     Set<Long> candidates = new LinkedHashSet<>();
     // Never serialize. Discarded after aggregation or cancellation.

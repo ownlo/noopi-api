@@ -435,9 +435,13 @@ Response `200 OK` 예시:
   "phase": "DISCUSSION",
   "myRole": "CITIZEN",
   "keyword": "바다",
-  "firstSpeakerPlayerId": 14
+  "speakingOrderPlayerIds": [14, 9, 21, 3]
 }
 ```
+
+`speakingOrderPlayerIds`는 전체 GameSession 참가자의 `playerId`를 발언
+순서대로 담는다. 모든 참가자는 정확히 한 번 포함되며 첫 번째 값이 첫
+발언자다.
 
 다른 Player의 역할은 게임 종료 전 절대 반환하지 않는다.
 
@@ -717,8 +721,8 @@ Response:
 204 No Content
 ```
 
-모든 참가자가 역할 확인을 완료하면 서버가 첫 발언자를 랜덤으로 선정하고
-`DISCUSSION` 단계로 전환한다.
+모든 참가자가 역할 확인을 완료하면 서버가 전체 참가자의 발언 순서를
+랜덤으로 선정하고 `DISCUSSION` 단계로 전환한다.
 
 주요 오류:
 
@@ -1403,7 +1407,7 @@ Room broadcast:
   "type": "DISCUSSION_STARTED",
   "gameSessionId": 55,
   "payload": {
-    "firstSpeakerPlayerId": 14
+    "speakingOrderPlayerIds": [14, 9, 21, 3]
   }
 }
 ```

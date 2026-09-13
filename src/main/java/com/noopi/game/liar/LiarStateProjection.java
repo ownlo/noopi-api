@@ -35,7 +35,7 @@ public class LiarStateProjection {
             state.put("playerRoleCheckStatuses", session.activeIds().stream()
                 .map(id -> Map.of("playerId", id, "checked", g.checked.contains(id))).toList());
         }
-        if (g.phase == DISCUSSION) state.put("firstSpeakerPlayerId", g.firstSpeaker);
+        if (g.phase == DISCUSSION) state.put("speakingOrderPlayerIds", g.speakingOrder);
         if (g.voting()) {
             Map<String, Object> vote = new LinkedHashMap<>();
             vote.put("round", g.voteRound);

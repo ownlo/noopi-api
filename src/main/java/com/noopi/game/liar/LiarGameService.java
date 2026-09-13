@@ -69,9 +69,13 @@ public class LiarGameService {
         var g = game(room);
         var active = room.session.activeIds();
         if (g.phase == ROLE_REVEAL && !active.isEmpty() && g.checked.containsAll(active)) {
-            g.firstSpeaker = active.get(random.nextInt(active.size()));
+            var speakingOrder = new ArrayList<>(active);
+            for (int index = speakingOrder.size() - 1; index > 0; index--) {
+                Collections.swap(speakingOrder, index, random.nextInt(index + 1));
+            }
+            g.speakingOrder = List.copyOf(speakingOrder);
             g.phase = DISCUSSION;
-            events.game(room, "DISCUSSION_STARTED", Map.of("firstSpeakerPlayerId", g.firstSpeaker));
+            events.game(room, "DISCUSSION_STARTED", Map.of("speakingOrderPlayerIds", g.speakingOrder));
         }
     }
     public long startVote(RoomRuntime room, long playerId) {

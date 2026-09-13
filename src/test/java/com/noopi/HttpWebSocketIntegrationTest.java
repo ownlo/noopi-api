@@ -138,6 +138,15 @@ class HttpWebSocketIntegrationTest {
             assertThat(request("POST", game + "/liar/role-check", p.getValue(), null).statusCode()).isEqualTo(204);
         }
         assertThat(liar).isPositive(); assertThat(keyword).isNotBlank();
+        listener.awaitType("DISCUSSION_STARTED");
+        var discussionState = body(request("GET", path + "/state", host, null), 200)
+            .at("/gameSession/gameState");
+        List<Long> speakingOrder = new ArrayList<>();
+        discussionState.get("speakingOrderPlayerIds").forEach(node -> speakingOrder.add(node.asLong()));
+        assertThat(speakingOrder).containsExactlyInAnyOrderElementsOf(players.keySet()).doesNotHaveDuplicates();
+        assertThat(discussionState.has("firstSpeakerPlayerId")).isFalse();
+        assertThat(String.join("\n", listener.received))
+            .contains("speakingOrderPlayerIds").doesNotContain("firstSpeakerPlayerId");
         assertThat(body(request("POST", game + "/liar/votes/start", host, null), 200).get("voteRound").asInt()).isEqualTo(1);
         final long liarId = liar;
         long citizen = players.keySet().stream().filter(id -> id != liarId).findFirst().orElseThrow();

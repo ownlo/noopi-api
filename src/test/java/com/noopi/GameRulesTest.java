@@ -155,9 +155,13 @@ class GameRulesTest {
             assertThat(snapshot.players()).allSatisfy(p -> assertThat(p.currentGameParticipant()).isTrue());
         }
         discussion();
+        List<Long> speakingOrder = ((List<?>) state(ids.getFirst()).get("speakingOrderPlayerIds"))
+            .stream().map(Long.class::cast).toList();
+        assertThat(speakingOrder).containsExactlyInAnyOrderElementsOf(ids).doesNotHaveDuplicates();
         for (long id : ids) {
             assertThat(state(id).get("keyword")).isEqualTo(id == liar ? null : "바다");
-            assertThat(ids).contains((Long) state(id).get("firstSpeakerPlayerId"));
+            assertThat(state(id).get("speakingOrderPlayerIds")).isEqualTo(speakingOrder);
+            assertThat(state(id)).doesNotContainKey("firstSpeakerPlayerId");
         }
     }
     @Test void roleCheckDuplicateAndHostPermissions() {
@@ -241,11 +245,16 @@ class GameRulesTest {
         assertThat(events.count("REVOTE_STARTED")).isEqualTo(1);
         assertThat(((Map<?, ?>) state(ids.get(0)).get("vote")).get("round")).isEqualTo(2L);
     }
-    @Test void concurrentRoleChecksChooseOneSpeaker() throws Exception {
+    @Test void concurrentRoleChecksChooseOneSpeakingOrder() throws Exception {
         start(4);
         runTogether(ids.stream().<Runnable>map(id -> () -> app.roleCheck(room, session, clients.get(id))).toList());
         assertThat(events.count("DISCUSSION_STARTED")).isEqualTo(1);
         assertThat(state(liar).get("phase")).isEqualTo("DISCUSSION");
+        var event = events.sent.stream().filter(sent -> sent.type().equals("DISCUSSION_STARTED")).findFirst().orElseThrow();
+        List<Long> speakingOrder = ((List<?>) event.payload().get("speakingOrderPlayerIds"))
+            .stream().map(Long.class::cast).toList();
+        assertThat(speakingOrder).containsExactlyInAnyOrderElementsOf(ids).doesNotHaveDuplicates();
+        assertThat(event.payload()).doesNotContainKey("firstSpeakerPlayerId");
     }
     @Test void concurrentNicknameJoinAllowsExactlyOne() throws Exception {
         createPlayers(3);
