@@ -28,5 +28,5 @@ noopi:
   recent-keyword-count: ${RECENT_KEYWORD_COUNT:10}
   allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
   metrics:
-    api-key: ${METRICS_API_KEY:}
+    api-key: ${METRICS_API_KEY:adduci}
     flush-interval-ms: ${METRICS_FLUSH_INTERVAL_MS:10000}
