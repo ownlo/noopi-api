@@ -237,3 +237,15 @@ CREATE TABLE blind_keyword (
 
 ## 18. 최종 원칙
 **게임 진행 상태는 Memory, 영구 게임 콘텐츠는 MySQL.**
+
+## 운영 통계 확장 (2026-09-13 요청)
+
+콘텐츠 전용 저장 경계에 일별 운영 집계를 추가한다. Runtime 객체를 영속화하지 않는다.
+`daily_room_metrics`: instance_id(UUID), metric_date 복합 PK, rooms_created, rooms_closed,
+duration_millis, max_duration_millis (모두 BIGINT).
+`daily_game_metrics`: instance_id, metric_date, game_type 복합 PK, started, finished,
+cancelled, participant_count (모두 BIGINT). 날짜는 한국 시간이다.
+프로세스별 누적 snapshot을 upsert하여 저장 재시도가 중복 합산되지 않도록 한다.
+조회는 인스턴스별 행을 날짜/게임별 합산한다. SQL은 Flyway V5가 정의하며 JdbcTemplate으로 처리한다.
+방 단위 lock 안에서는 메모리 집계만 변경하고 DB 저장은 별도 주기 작업으로 수행한다.
+API 계약과 지표의 정의/유실 한계는 공통 API_SPEC의 운영 일별 통계를 따른다.

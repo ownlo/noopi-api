@@ -27,7 +27,8 @@ public class ApiExceptionHandler {
     }
 
     // Transport errors are not domain error codes; use HTTP's standard names.
-    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
+    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class,
+        org.springframework.web.bind.MissingServletRequestParameterException.class})
     ResponseEntity<ErrorResponse> malformed(Exception ex) {
         return ResponseEntity.badRequest().body(new ErrorResponse("BAD_REQUEST", "요청 형식이 올바르지 않습니다."));
     }

@@ -29,13 +29,35 @@ class MySqlIntegrationTest extends HttpWebSocketIntegrationTest {
     @Autowired LiarContent content;
     @Autowired BlindContent blindContent;
 
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+
+    @Test void dailyMetricsUpsertIsIdempotentOnMySql() {
+        var clock = java.time.Clock.fixed(java.time.Instant.parse("2020-01-01T00:00:00Z"), java.time.ZoneOffset.UTC);
+        var collector = new com.noopi.metrics.MetricsCollector(clock);
+        var room = new com.noopi.room.RoomRuntime(1, "ABCDEF", clock.instant());
+        collector.created(room);
+        room.session = new com.noopi.game.session.GameSessionRuntime(1, "BLIND", null);
+        room.session.start(List.of(new com.noopi.game.session.GameSessionRuntime.Participant(1, "가")));
+        collector.observe(room);
+        room.closed = true;
+        collector.closed(room);
+        var persistence = new com.noopi.metrics.MetricsPersistence(collector, jdbc, transactions);
+        persistence.flush(); persistence.flush();
+        var day = java.time.LocalDate.parse("2020-01-01");
+        var totals = new com.noopi.metrics.MetricsQuery(jdbc).daily(day, day).days().getFirst();
+        assertThat(totals.roomsCreated()).isEqualTo(1);
+        assertThat(totals.roomsClosed()).isEqualTo(1);
+        assertThat(totals.games().get(1).started()).isEqualTo(1);
+        assertThat(totals.games().get(1).cancelled()).isEqualTo(1);
+    }
+
     @Test @Transactional void migrationsAndContentFilteringAndRecentAvoidance() {
         assertThat(jdbc.queryForObject("select count(*) from liar_category where code = 'RANDOM'", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from liar_keyword", Integer.class)).isEqualTo(15);
         assertThat(jdbc.queryForObject("select count(*) from blind_keyword", Integer.class)).isEqualTo(10);
-        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success = 1", Integer.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success = 1", Integer.class)).isEqualTo(5);
         assertThat(jdbc.queryForList("show tables", String.class)).containsExactlyInAnyOrder(
-            "blind_keyword", "flyway_schema_history", "liar_category", "liar_keyword");
+            "blind_keyword", "flyway_schema_history", "liar_category", "liar_keyword", "daily_room_metrics", "daily_game_metrics");
         var blind = blindContent.chooseDistinct(2, List.of());
         assertThat(blind).hasSize(2).extracting(BlindContent.Keyword::id).doesNotHaveDuplicates();
         assertThat(content.choose("FOOD", List.of(1L, 2L, 3L, 4L)).id()).isEqualTo(5L);

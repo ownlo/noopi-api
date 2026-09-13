@@ -1,6 +1,8 @@
 package com.noopi.api;
 
 public enum ErrorCode {
+    BAD_REQUEST(400, "요청 형식이 올바르지 않습니다."),
+    METRICS_ACCESS_DENIED(403, "운영 통계 조회 권한이 없습니다."),
     ROOM_NOT_FOUND(404, "방을 찾을 수 없습니다."),
     ROOM_CLOSED(409, "종료된 방입니다."),
     PLAYER_NOT_IN_ROOM(403, "방에 참가한 Player가 아닙니다."),

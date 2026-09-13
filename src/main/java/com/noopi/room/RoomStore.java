@@ -17,7 +17,14 @@ public class RoomStore {
     private final AtomicLong ids = new AtomicLong();
     private final RandomGenerator random;
     private final Clock clock;
-    public RoomStore(RandomGenerator random, Clock clock) { this.random = random; this.clock = clock; }
+    private final com.noopi.metrics.MetricsCollector metrics;
+    public RoomStore(RandomGenerator random, Clock clock) {
+        this(random, clock, new com.noopi.metrics.MetricsCollector(clock));
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public RoomStore(RandomGenerator random, Clock clock, com.noopi.metrics.MetricsCollector metrics) {
+        this.random = random; this.clock = clock; this.metrics = metrics;
+    }
     public long nextId() { return ids.incrementAndGet(); }
 
     public RoomRuntime create(PlayerRuntime host) {
@@ -27,6 +34,7 @@ public class RoomStore {
         RoomRuntime room = new RoomRuntime(id, code, clock.instant());
         room.players.put(host.id, host);
         room.hostPlayerId = host.id;
+        metrics.created(room);
         rooms.put(id, room);
         return room;
     }
@@ -41,9 +49,13 @@ public class RoomStore {
         if (room == null) throw ROOM_NOT_FOUND.exception();
         synchronized (room) {
             ROOM_CLOSED.require(!room.closed);
-            T result = action.apply(room);
-            room.lastActivityAt = clock.instant();
-            return result;
+            try {
+                T result = action.apply(room);
+                room.lastActivityAt = clock.instant();
+                return result;
+            } finally {
+                metrics.observe(room);
+            }
         }
     }
     public long byCode(String code) {
@@ -53,8 +65,12 @@ public class RoomStore {
     }
     public Collection<RoomRuntime> snapshot() { return List.copyOf(rooms.values()); }
     public void remove(RoomRuntime room) {
-        room.closed = true;
-        rooms.remove(room.id, room);
-        codes.remove(room.code, room.id);
+        synchronized (room) {
+            if (room.closed) return;
+            room.closed = true;
+            metrics.closed(room);
+            rooms.remove(room.id, room);
+            codes.remove(room.code, room.id);
+        }
     }
 }

@@ -12,6 +12,8 @@ public final class GameSessionRuntime {
     public final String gameType;
     public Status status = Status.READY;
     public GameRuntime game;
+    public boolean metricsStarted;
+    public boolean metricsEnded;
     private Map<Long, Participant> participants = Map.of();
     private final Set<Long> excluded = new HashSet<>();
 
