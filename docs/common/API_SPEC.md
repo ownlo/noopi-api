@@ -7,7 +7,8 @@
 
 공통 서비스 규칙은 `SERVICE_SPEC.md`, GameSession 생명주기는
 `GAME_SESSION_SPEC.md`, 실시간 원칙은 `REALTIME_SPEC.md`, 게임별 규칙은
-`games/LIAR_GAME_SPEC.md`와 `games/BLIND_GAME_SPEC.md`를 따른다.
+`games/LIAR_GAME_SPEC.md`, `games/BLIND_GAME_SPEC.md`,
+`games/MAFIA_GAME_SPEC.md`를 따른다.
 
 서버의 현재 상태가 Source of Truth이며, 클라이언트는 게임
 상태·역할·승패·투표 결과를 자체 계산하지 않는다.
@@ -465,6 +466,208 @@ Response `200 OK` 예시:
 게임 종료 전에는 현재 Player 본인의 실제 제시어를 응답에 포함하지 않는다.
 상대방의 제시어 카테고리도 반환하지 않는다.
 
+### 마피아 게임 개인화 상태
+
+마피아 게임의 `gameState`는 phase와 현재 Player의 생존 여부, 허용된 행동,
+서버가 계산한 공개 결과를 기준으로 구성한다. 역할과 개인 기록은 요청
+Player에게 허용된 범위만 반환한다.
+
+모든 마피아 게임 상태에는 다음 공통 필드를 포함한다.
+
+``` json
+{
+  "type": "MAFIA",
+  "phase": "DAY",
+  "myRole": "POLICE",
+  "alive": true,
+  "players": [
+    {
+      "playerId": 12,
+      "nickname": "종윤",
+      "alive": true,
+      "revealedRole": null
+    },
+    {
+      "playerId": 14,
+      "nickname": "철수",
+      "alive": false,
+      "revealedRole": "DOCTOR"
+    }
+  ]
+}
+```
+
+`revealedRole`은 처형 또는 밤 사망으로 역할이 공개된 Player에게만 값을
+제공하며, 그 외 Player는 게임 종료 전 항상 `null`이다. `myRole`은 현재
+Player 본인의 역할이므로 게임 중 모든 phase에서 다시 제공할 수 있다.
+
+`ROLE_REVEAL` 예시:
+
+``` json
+{
+  "type": "MAFIA",
+  "phase": "ROLE_REVEAL",
+  "myRole": "MAFIA",
+  "alive": true,
+  "roleChecked": false,
+  "roleCheckedCount": 3,
+  "participantCount": 6,
+  "mafiaTeammates": [
+    { "playerId": 12, "nickname": "종윤", "alive": true }
+  ]
+}
+```
+
+`mafiaTeammates`는 현재 Player가 `MAFIA`일 때만 포함한다. 다른 역할에는
+빈 배열이 아니라 필드 자체를 포함하지 않는다. 역할 확인 완료 Player의
+신원은 공개하지 않고 완료 수만 반환한다.
+
+`FIRST_NIGHT` 또는 `NIGHT` 예시:
+
+``` json
+{
+  "type": "MAFIA",
+  "phase": "NIGHT",
+  "nightNo": 2,
+  "alive": true,
+  "myRole": "POLICE",
+  "nightAction": {
+    "actionType": "INVESTIGATE",
+    "submitted": false,
+    "eligibleTargets": [
+      { "playerId": 12, "nickname": "종윤" },
+      { "playerId": 14, "nickname": "철수" }
+    ]
+  },
+  "nightProgress": {
+    "completedActionCount": 3,
+    "requiredActionCount": 6
+  },
+  "investigationHistory": [
+    {
+      "nightNo": 1,
+      "targetPlayerId": 14,
+      "targetNickname": "철수",
+      "mafia": false
+    }
+  ]
+}
+```
+
+`eligibleTargets`는 역할, 생존 여부, 자기 선택 가능 여부, 마피아 동료 제외,
+의사의 직전 치료 대상 제외 규칙을 서버가 적용한 결과다. Frontend는 전체
+Player 목록으로 후보를 다시 계산하지 않는다. 행동을 제출한 뒤에는
+`submitted = true`이며 후보 목록을 제공하지 않는다.
+
+마피아에게는 `mafiaTeammates`를 `ROLE_REVEAL` 이후 게임 종료 전까지 계속
+반환하여 재접속 후에도 복구할 수 있게 한다. 경찰에게는 본인의
+`investigationHistory`를 게임 중 계속 반환한다. 다른 역할이나 다른
+Player에게 이 정보를 반환하지 않는다.
+
+첫 번째 밤의 마피아와 의사에게는 `nightAction.actionType = "CONFIRM"`과
+빈 `eligibleTargets`를 반환한다. 일반 밤에는 역할에 따라 `ATTACK`,
+`INVESTIGATE`, `HEAL`, `SUSPECT` 중 하나만 반환한다. 사망한 Player에게는
+`nightAction`과 `nightProgress`를 반환하지 않는다.
+
+`DAY` 예시:
+
+``` json
+{
+  "type": "MAFIA",
+  "phase": "DAY",
+  "dayNo": 2,
+  "alive": true,
+  "lastNightResult": {
+    "nightNo": 2,
+    "deadPlayer": {
+      "playerId": 14,
+      "nickname": "철수",
+      "revealedRole": "DOCTOR"
+    },
+    "mySuspicionCount": 2
+  }
+}
+```
+
+사망자가 없으면 `deadPlayer`는 `null`이다. `mySuspicionCount`는 현재 요청
+Player가 직전 밤에 받은 시민 의심 수만 나타내며 다른 Player의 수나
+시민별 의심 대상은 포함하지 않는다.
+
+첫 번째 낮은 `dayNo = 1`이며 공격이 없으므로 `deadPlayer = null`이다.
+
+`VOTING` 또는 `REVOTING` 예시:
+
+``` json
+{
+  "type": "MAFIA",
+  "phase": "VOTING",
+  "myRole": "CITIZEN",
+  "alive": true,
+  "vote": {
+    "round": 1,
+    "eligibleCandidates": [
+      { "playerId": 12, "nickname": "종윤" },
+      { "playerId": 14, "nickname": "철수" }
+    ],
+    "requiredVoteCount": 5,
+    "completedVoteCount": 2,
+    "myVoteSubmitted": false
+  }
+}
+```
+
+마피아 게임에서는 투표 중 누가 완료했는지도 공개하지 않으므로
+`playerVoteStatuses`를 포함하지 않는다. 사망한 Player의 `vote`에는
+`eligibleCandidates`와 `myVoteSubmitted`를 포함하지 않고 전체 완료 수만
+제공할 수 있다.
+
+`VOTE_RESULT` 예시:
+
+``` json
+{
+  "type": "MAFIA",
+  "phase": "VOTE_RESULT",
+  "voteResult": {
+    "round": 1,
+    "tied": false,
+    "counts": [
+      { "playerId": 12, "nickname": "종윤", "voteCount": 3 },
+      { "playerId": 14, "nickname": "철수", "voteCount": 2 }
+    ],
+    "executionTargetPlayerId": 12
+  },
+  "canAdvance": true
+}
+```
+
+`canAdvance`는 현재 요청 Player가 방장이고 현재 phase에서 진행 요청을 할 수
+있을 때만 `true`다. 동률이면 phase는 `REVOTING`이고 서버가 동률 후보만
+`eligibleCandidates`로 제공한다.
+
+`EXECUTION` 예시:
+
+``` json
+{
+  "type": "MAFIA",
+  "phase": "EXECUTION",
+  "executionResult": {
+    "playerId": 12,
+    "nickname": "종윤",
+    "revealedRole": "MAFIA"
+  },
+  "canAdvance": true
+}
+```
+
+`NIGHT_RESULT`는 `DAY`의 `lastNightResult`와 동일한 구조로 해당 밤의
+`nightResult`를 제공하고 방장에게만 `canAdvance = true`를 반환한다. 승리
+조건이 충족되면 `EXECUTION` 또는 `NIGHT_RESULT`에 머무르지 않고 즉시
+`FINISHED`를 반환한다.
+
+사망한 Player도 공개된 Player 생존 상태, 공개 역할, 투표 결과, 처형 결과,
+밤 사망 결과를 조회할 수 있다. 다만 `alive = false`이며 밤 행동과 처형
+투표를 위한 후보나 제출 가능 상태는 절대 제공하지 않는다.
+
 ------------------------------------------------------------------------
 
 # Game Catalog API
@@ -492,6 +695,13 @@ Response `200 OK`:
       "name": "블라인드 게임",
       "minPlayers": 2,
       "maxPlayers": 2,
+      "enabled": true
+    },
+    {
+      "gameType": "MAFIA",
+      "name": "마피아 게임",
+      "minPlayers": 4,
+      "maxPlayers": 12,
       "enabled": true
     }
   ]
@@ -588,6 +798,40 @@ Request --- 블라인드 게임:
 블라인드 게임에는 카테고리 설정이 없다. Client가 카테고리 값을 보내면
 `INVALID_GAME_CONFIG`를 반환한다.
 
+Request --- 마피아 게임:
+
+``` json
+{
+  "gameType": "MAFIA",
+  "config": {}
+}
+```
+
+마피아 게임의 역할 구성은 시작 시점의 참가 인원에 따라 서버가 자동으로
+결정한다. Client가 역할별 인원이나 기타 게임 설정을 보내면
+`INVALID_GAME_CONFIG`를 반환한다.
+
+마피아 게임 `READY` 상태의 `gameState`에는 현재 참가 인원에 따른 역할 구성
+미리보기를 서버가 제공한다.
+
+``` json
+{
+  "type": "MAFIA",
+  "phase": "READY",
+  "participantCount": 4,
+  "roleComposition": {
+    "mafia": 1,
+    "police": 1,
+    "doctor": 0,
+    "citizen": 2
+  }
+}
+```
+
+시작 전 참가자가 바뀌면 서버는 `participantCount`와 `roleComposition`을
+현재 인원 기준으로 다시 제공한다. 최종 역할 구성과 배정은 게임 시작
+요청을 처리하는 시점에 확정한다.
+
 Response `201 Created`:
 
 ``` json
@@ -598,8 +842,7 @@ Response `201 Created`:
 }
 ```
 
-응답의 `gameType`은 요청한 게임 타입을 그대로 반환한다. 블라인드 게임이면
-`BLIND`를 반환한다.
+응답의 `gameType`은 요청한 게임 타입을 그대로 반환한다.
 
 생성 시점에는 아직 역할/제시어를 클라이언트에 공개하지 않는다.
 
@@ -656,6 +899,16 @@ Response:
 → Player별 제시어 배정
 → GameSession PLAYING
 → Blind phase GUESSING
+```
+
+마피아 게임의 경우 서버가 다음을 수행한다.
+
+``` text
+참가 인원이 4~12명인지 검증
+→ 참가 인원에 맞는 역할 구성 결정
+→ 역할 무작위 배정
+→ GameSession PLAYING
+→ Mafia phase ROLE_REVEAL
 ```
 
 주요 오류:
@@ -994,6 +1247,9 @@ Response:
 실제 "장기 미접속"으로 판단하는 시간 기준은 Backend 운영 설정에서
 정의한다.
 
+마피아 게임의 장기 미접속 참가자 제외 정책은 V1에서 정의하지 않는다.
+따라서 마피아 GameSession에서는 이 API를 제공하지 않는다.
+
 주요 오류:
 
 ``` text
@@ -1115,6 +1371,188 @@ GAME_SESSION_ALREADY_FINISHED
 
 ------------------------------------------------------------------------
 
+# Mafia Game Action API
+
+아래 모든 요청은 공통으로 다음 Header를 사용한다.
+
+``` text
+X-Client-Id: <clientId>
+```
+
+## 마피아 역할 확인 완료
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/role-check
+```
+
+Request body 없음. 각 Player가 자신의 역할과, 마피아라면 동료 목록을 확인한
+뒤 호출한다. 모든 참가자가 완료하면 서버는 `FIRST_NIGHT`로 전환한다.
+
+Response: `204 No Content`
+
+주요 오류:
+
+``` text
+PLAYER_NOT_IN_GAME
+INVALID_GAME_PHASE
+ROLE_ALREADY_CHECKED
+```
+
+## 마피아 밤 행동 제출
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/night-actions
+```
+
+Request는 역할과 현재 밤에 허용된 행동을 discriminated union으로 표현한다.
+
+``` json
+{ "actionType": "ATTACK", "targetPlayerId": 15 }
+```
+
+``` json
+{ "actionType": "INVESTIGATE", "targetPlayerId": 15 }
+```
+
+``` json
+{ "actionType": "HEAL", "targetPlayerId": 13 }
+```
+
+``` json
+{ "actionType": "SUSPECT", "targetPlayerId": 15 }
+```
+
+첫 번째 밤에 행동이 없는 의사와 공격할 수 없는 마피아는 다음 요청으로
+확인을 제출한다.
+
+``` json
+{ "actionType": "CONFIRM" }
+```
+
+일반 Response `200 OK`:
+
+``` json
+{ "actionType": "HEAL" }
+```
+
+경찰 조사 Response `200 OK`:
+
+``` json
+{
+  "actionType": "INVESTIGATE",
+  "result": {
+    "targetPlayerId": 15,
+    "mafia": true
+  }
+}
+```
+
+조사 결과는 제출 응답에서 즉시 반환하고 개인 조사 기록에 저장한다. 이후
+경찰 본인의 `/state`에 `investigationHistory`로 다시 제공한다.
+
+모든 생존자의 필수 행동이 완료되면 첫 번째 밤은 `DAY`로, 일반 밤은
+`NIGHT_RESULT`로 자동 전환한다.
+
+주요 오류:
+
+``` text
+PLAYER_NOT_IN_GAME
+PLAYER_DEAD
+INVALID_GAME_PHASE
+INVALID_NIGHT_ACTION
+ACTION_ALREADY_SUBMITTED
+INVALID_ACTION_TARGET
+```
+
+## 마피아 낮 투표 시작
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/votes/start
+```
+
+방장만 `DAY`에서 호출할 수 있다. Response와 투표 라운드 규칙은 라이어
+게임의 투표 시작 API와 동일하다.
+
+Response `200 OK`:
+
+``` json
+{ "voteRound": 1 }
+```
+
+주요 오류:
+
+``` text
+NOT_ROOM_HOST
+PLAYER_NOT_IN_GAME
+INVALID_GAME_PHASE
+VOTE_ALREADY_STARTED
+```
+
+## 마피아 처형 투표 제출
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/votes
+```
+
+``` json
+{
+  "voteRound": 1,
+  "targetPlayerId": 15
+}
+```
+
+모든 생존자가 투표하며 `eligibleCandidates`는 서버가 제공한다. 비밀투표,
+자기 자신 투표 금지, 동률 후보 재투표, 무제한 재투표 규칙은 라이어 게임
+투표 API와 동일하다. 단독 최다 득표자가 결정되면 `VOTE_RESULT`로 전환한다.
+
+Response: `204 No Content`
+
+주요 오류:
+
+``` text
+PLAYER_NOT_IN_GAME
+PLAYER_DEAD
+INVALID_GAME_PHASE
+INVALID_VOTE_ROUND
+ALREADY_VOTED
+CANNOT_VOTE_SELF
+INVALID_VOTE_TARGET
+```
+
+## 마피아 결과 단계 진행
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/advance
+```
+
+Request body 없음. 방장만 다음 전환을 요청할 수 있다.
+
+``` text
+VOTE_RESULT → EXECUTION
+EXECUTION → NIGHT 또는 FINISHED
+NIGHT_RESULT → DAY 또는 FINISHED
+```
+
+`EXECUTION` 진입 시 최종 지목자를 사망 처리하고 역할을 공개한다. 사망이
+확정되는 `EXECUTION` 및 `NIGHT_RESULT` 처리 시 서버가 승리 조건을 검사하며,
+승리 조건이 충족되면 다음 진행 phase 대신 즉시 `FINISHED`가 된다.
+
+Response: `204 No Content`
+
+동일 phase에서 중복 호출하여 두 단계를 한 번에 건너뛸 수 없도록 서버가
+phase 전환을 원자적으로 처리한다. 이미 전환된 요청은
+`INVALID_GAME_PHASE`로 거부한다.
+
+주요 오류:
+
+``` text
+NOT_ROOM_HOST
+PLAYER_NOT_IN_GAME
+INVALID_GAME_PHASE
+```
+
+------------------------------------------------------------------------
+
 # Finished State
 
 ## 23. 라이어 게임 최종 결과
@@ -1198,6 +1636,35 @@ GAME_SESSION_ALREADY_FINISHED
 ```
 
 종료 후에는 두 Player의 실제 제시어를 두 참가자 모두에게 공개한다.
+
+### 마피아 게임 최종 결과
+
+``` json
+{
+  "type": "MAFIA",
+  "phase": "FINISHED",
+  "result": {
+    "winnerTeam": "CITIZEN_TEAM",
+    "players": [
+      {
+        "playerId": 12,
+        "nickname": "종윤",
+        "role": "MAFIA",
+        "alive": false
+      },
+      {
+        "playerId": 13,
+        "nickname": "예은",
+        "role": "POLICE",
+        "alive": true
+      }
+    ]
+  }
+}
+```
+
+`winnerTeam`은 `MAFIA_TEAM` 또는 `CITIZEN_TEAM`이다. 게임 종료 후에만 전체
+참가자의 역할을 공개한다.
 
 ------------------------------------------------------------------------
 
@@ -1543,6 +2010,132 @@ Room broadcast:
 정답 내용은 broadcast하지 않는다. 최종 결과는 `GAME_FINISHED` 후 상태
 조회로 확인한다.
 
+## 마피아 게임 이벤트
+
+### MAFIA_ROLE_CHECKED
+
+``` json
+{
+  "type": "MAFIA_ROLE_CHECKED",
+  "gameSessionId": 55,
+  "payload": {
+    "playerId": 13,
+    "roleCheckedCount": 3,
+    "participantCount": 6
+  }
+}
+```
+
+### MAFIA_NIGHT_ACTION_SUBMITTED
+
+``` json
+{
+  "type": "MAFIA_NIGHT_ACTION_SUBMITTED",
+  "gameSessionId": 55,
+  "payload": {
+    "playerId": 13,
+    "nightNo": 2,
+    "completedActionCount": 4,
+    "requiredActionCount": 6
+  }
+}
+```
+
+행동 타입과 대상, 조사 결과, 치료 성공 여부는 포함하지 않는다.
+
+### MAFIA_PHASE_CHANGED
+
+``` json
+{
+  "type": "MAFIA_PHASE_CHANGED",
+  "gameSessionId": 55,
+  "payload": {
+    "phase": "NIGHT_RESULT"
+  }
+}
+```
+
+### MAFIA_VOTE_STARTED
+
+``` json
+{
+  "type": "MAFIA_VOTE_STARTED",
+  "gameSessionId": 55,
+  "payload": {
+    "voteRound": 1,
+    "requiredVoteCount": 5
+  }
+}
+```
+
+### MAFIA_PLAYER_VOTED
+
+``` json
+{
+  "type": "MAFIA_PLAYER_VOTED",
+  "gameSessionId": 55,
+  "payload": {
+    "voteRound": 1,
+    "completedVoteCount": 3,
+    "requiredVoteCount": 5
+  }
+}
+```
+
+마피아 게임에서는 투표 완료 Player의 신원도 공개하지 않으므로
+`playerId`와 `targetPlayerId`를 모두 포함하지 않는다.
+
+### MAFIA_VOTE_RESULT
+
+``` json
+{
+  "type": "MAFIA_VOTE_RESULT",
+  "gameSessionId": 55,
+  "payload": {
+    "voteRound": 1,
+    "tied": false,
+    "counts": [
+      { "playerId": 12, "voteCount": 3 },
+      { "playerId": 14, "voteCount": 2 }
+    ],
+    "executionTargetPlayerId": 12
+  }
+}
+```
+
+개인별 투표 관계는 포함하지 않는다.
+
+### MAFIA_REVOTE_STARTED
+
+``` json
+{
+  "type": "MAFIA_REVOTE_STARTED",
+  "gameSessionId": 55,
+  "payload": {
+    "voteRound": 2,
+    "candidatePlayerIds": [12, 14],
+    "requiredVoteCount": 5
+  }
+}
+```
+
+### MAFIA_PLAYER_DIED
+
+``` json
+{
+  "type": "MAFIA_PLAYER_DIED",
+  "gameSessionId": 55,
+  "payload": {
+    "playerId": 14,
+    "revealedRole": "DOCTOR",
+    "cause": "NIGHT_ATTACK"
+  }
+}
+```
+
+`cause`는 `NIGHT_ATTACK` 또는 `EXECUTION`이다. 수신 Client는 `/state`를
+다시 조회한다.
+
 ------------------------------------------------------------------------
 
 # Security / Information Exposure
@@ -1551,9 +2144,13 @@ Room broadcast:
 
 게임 종료 전 다음 정보를 권한 없는 Client에게 전달하지 않는다.
 
--   다른 Player의 실제 역할
+-   게임 규칙상 아직 공개가 확정되지 않은 다른 Player의 실제 역할
 -   라이어에게 현재 제시어
 -   블라인드 게임에서 종료 전 현재 Player 본인의 제시어
+-   마피아 게임에서 종료 전 공개되지 않은 다른 Player의 역할
+-   경찰 조사 대상과 결과(요청 경찰 외 Client 기준)
+-   시민별 의심 대상과 다른 Player의 개인 의심 수
+-   마피아별 공격 선택과 의사의 치료 선택
 -   전체 역할 배정 정보
 -   전체 제시어 목록
 -   다른 Player의 투표 대상
@@ -1599,6 +2196,8 @@ Frontend의 버튼 표시 여부는 권한 검증 수단이 아니다.
 -   라이어 추측 제출
 -   블라인드 게임에서 최초 정답에 따른 승자 확정
 -   GameSession 취소
+-   마피아 역할 확인과 밤 행동
+-   마피아 처형 투표와 결과 단계 진행
 
 이미 완료된 행동을 다시 요청하면 상태에 따라 `409 Conflict`와 고정 오류
 코드를 반환한다.
@@ -1611,6 +2210,12 @@ Frontend의 버튼 표시 여부는 권한 검증 수단이 아니다.
 
 ``` text
 gameSessionId + voteRound + voterPlayerId
+```
+
+마피아 밤 행동은 다음 논리 키로 한 번만 허용한다.
+
+``` text
+gameSessionId + nightNo + playerId
 ```
 
 ------------------------------------------------------------------------
@@ -1632,7 +2237,9 @@ WebSocket 재연결
 ```
 
 이미 역할을 확인했거나 투표했거나 라이어 추측을 제출했다면 재접속 후
-해당 행동을 다시 수행할 수 없다.
+해당 행동을 다시 수행할 수 없다. 마피아 게임에서는 본인의 역할, 생존
+여부, 역할 확인 여부, 밤 행동 제출 여부, 경찰 조사 기록, 마피아 동료 목록,
+현재 투표 제출 여부를 함께 복구한다.
 
 ------------------------------------------------------------------------
 
@@ -1694,6 +2301,22 @@ INVALID_ANSWER
 GAME_SESSION_ALREADY_FINISHED
 ```
 
+### Mafia Game
+
+``` text
+INVALID_GAME_PHASE
+ROLE_ALREADY_CHECKED
+PLAYER_DEAD
+INVALID_NIGHT_ACTION
+ACTION_ALREADY_SUBMITTED
+INVALID_ACTION_TARGET
+VOTE_ALREADY_STARTED
+INVALID_VOTE_ROUND
+ALREADY_VOTED
+CANNOT_VOTE_SELF
+INVALID_VOTE_TARGET
+```
+
 ------------------------------------------------------------------------
 
 # Frontend Integration Rules
@@ -1717,6 +2340,10 @@ Frontend는 다음 규칙을 따른다.
 10. 블라인드 게임에서는 `opponentKeyword`만 진행 화면에 표시하고 본인의
     제시어를 추론하거나 별도 Client State에 저장하지 않는다.
 11. 블라인드 게임의 정답 여부와 승자는 서버 응답과 `/state`로만 확정한다.
+12. 마피아 게임의 밤 행동 종류와 후보는 `nightAction`을 그대로 사용한다.
+13. 경찰 조사 기록과 마피아 동료 목록은 허용된 Player에게만 표시한다.
+14. 마피아 투표 중 완료 Player 신원과 현재 득표수는 표시하지 않는다.
+15. 마피아 사망, 역할 공개, 의심 수, 승패를 Frontend에서 계산하지 않는다.
 
 ------------------------------------------------------------------------
 
@@ -1768,6 +2395,16 @@ Frontend는 다음 규칙을 따른다.
 
   `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/blind/guesses`                블라인드 정답
                                                                                                  제출
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/role-check`             마피아 역할 확인
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/night-actions`          마피아 밤 행동
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/votes/start`            마피아 투표 시작
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/votes`                  마피아 투표 제출
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/advance`                마피아 결과 단계 진행
   ------------------------------------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------
@@ -1796,31 +2433,3 @@ Frontend는 다음 규칙을 따른다.
 -   블라인드 게임의 카테고리는 선택하거나 공개하지 않는다.
 -   블라인드 게임은 최초 정답자 한 명만 원자적으로 승자로 확정한다.
 -   모든 승패 판정은 서버가 수행한다.
-
-## 37. 운영 일별 통계 조회
-
-`GET /api/metrics/daily?from=2026-09-01&to=2026-09-13`
-
-Swagger UI에서 직접 조회하며 별도 화면은 제공하지 않는다. `X-Client-Id`는 필요 없다.
-조회는 설정된 `METRICS_API_KEY`와 일치하는 `X-Metrics-Key` 헤더가 필요하다.
-키가 비어 있거나 불일치하면 `403 METRICS_ACCESS_DENIED`를 반환한다.
-`from`, `to`는 필수 ISO 날짜이며 양 끝을 포함해 최대 366일이다.
-누락/형식 오류/역순/범위 초과는 `400 BAD_REQUEST`다.
-
-응답 `200 OK`: `timezone`은 `Asia/Seoul`, `days`는 날짜 오름차순 배열이다.
-각 날짜는 `date`, `roomsCreated`, `roomsClosed`, `totalRoomDurationMinutes`,
-`averageRoomDurationMinutes`, `maxRoomDurationMinutes`, `games`를 갖는다.
-`games`는 LIAR, BLIND 각각의 `gameType`, `started`, `finished`, `cancelled`,
-`participantCount`를 포함한다. 데이터 없는 날짜/게임도 0을 반환한다.
-
-- 방 생성은 생성일, 종료 수와 지속시간은 종료일에 귀속한다.
-- 지속시간은 생성부터 방장 나가기 또는 TTL 삭제 시점까지이며 대기/미접속 시간을 포함한다.
-- 게임 횟수는 실제 PLAYING 전환일 기준이다. READY 취소는 집계하지 않는다.
-- 완료/취소는 각각 발생일 기준이다. 시작된 게임이 방 삭제로 소멸하면 통계상 취소다.
-- 참가 인원은 시작 시 snapshot 인원 합계이며 고유 사용자 수가 아니다.
-- 평균 지속시간의 분모는 종료된 방 수이며, 분 단위 소수 둘째 자리까지 반올림한다.
-- 서버가 자동 수집하고 기본 10초마다 DB에 저장한다. 조회는 저장된 데이터만 읽는다.
-- 통계에는 개인 식별자, 닉네임, 제시어, 역할, 투표, 정답 내용을 저장하지 않는다.
-- 수집 도입 전 과거 데이터는 복원하지 않는다. 정상 종료 시 마지막 저장을 시도한다.
-  프로세스 강제 종료 시 미저장 집계와 진행 중 방/게임의 종료 기록은 유실될 수 있다.
-  DB 장애 중 메모리 집계를 유지해 다음 저장 때 재시도한다.

@@ -101,6 +101,28 @@ WebSocket 이벤트에도 포함하지 않는다. 상대방 제시어는 개인�
 Client는 `/state`를 다시 조회한다. 오답 제출은 제출자에게 HTTP 응답으로만
 알리며 상대방에게 broadcast하지 않아도 된다.
 
+마피아 게임의 역할, 마피아 동료, 경찰 조사 결과, 시민별 의심 대상과
+Player별 개인 의심 수는 개인화 정보로 취급한다. Room 전체 broadcast에는
+phase 전환과 행동 완료 인원처럼 모든 참가자에게 공개 가능한 정보만
+포함하고, 각 Client는 상태 변경 이벤트를 수신한 뒤 개인화된 `/state`로
+자신에게 허용된 최신 정보를 조회한다. 처형 또는 밤 사망으로 공개가 확정된
+Player의 역할과 게임 종료 후 전체 역할은 공개 정보로 전환할 수 있다.
+
+마피아 게임 대표 이벤트는 다음과 같다.
+
+-   `MAFIA_ROLE_CHECKED`
+-   `MAFIA_NIGHT_ACTION_SUBMITTED`
+-   `MAFIA_PHASE_CHANGED`
+-   `MAFIA_VOTE_STARTED`
+-   `MAFIA_PLAYER_VOTED`
+-   `MAFIA_VOTE_RESULT`
+-   `MAFIA_REVOTE_STARTED`
+-   `MAFIA_PLAYER_DIED`
+
+밤 행동 이벤트에는 행동 타입, 대상, 경찰 조사 결과, 치료 성공 여부를
+broadcast하지 않는다. 상태 변경을 알리는 데 필요한 Player와 완료 인원만
+포함하고, 개인 결과는 제출 응답과 개인화된 `/state`로 제공한다.
+
 ## 11. 투표 이벤트
 
 투표 진행 중에는 투표 대상 정보를 다른 참가자에게 전달하지 않는다.
