@@ -578,6 +578,10 @@ Player에게 이 정보를 반환하지 않는다.
   "phase": "DAY",
   "dayNo": 2,
   "alive": true,
+  "remainingTeamCounts": {
+    "mafia": 1,
+    "citizenTeam": 3
+  },
   "lastNightResult": {
     "nightNo": 2,
     "deadPlayer": {
@@ -595,6 +599,10 @@ Player가 직전 밤에 받은 시민 의심 수만 나타내며 다른 Player�
 시민별 의심 대상은 포함하지 않는다.
 
 첫 번째 낮은 `dayNo = 1`이며 공격이 없으므로 `deadPlayer = null`이다.
+
+`remainingTeamCounts`는 서버가 현재 생존 역할을 기준으로 집계한 공개 정보다.
+`mafia`는 생존 마피아 수, `citizenTeam`은 경찰과 의사를 포함한 생존 시민팀
+수를 나타낸다. Frontend는 공개된 사망자 역할로 이 값을 직접 계산하지 않는다.
 
 `VOTING` 또는 `REVOTING` 예시:
 
@@ -1504,7 +1512,8 @@ POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/votes
 
 모든 생존자가 투표하며 `eligibleCandidates`는 서버가 제공한다. 비밀투표,
 자기 자신 투표 금지, 동률 후보 재투표, 무제한 재투표 규칙은 라이어 게임
-투표 API와 동일하다. 단독 최다 득표자가 결정되면 `VOTE_RESULT`로 전환한다.
+투표 API와 동일하다. 단독 최다 득표자가 결정되면 역할을 공개하지 않은 채
+`VOTE_RESULT`로 전환한다.
 
 Response: `204 No Content`
 
@@ -1520,6 +1529,23 @@ CANNOT_VOTE_SELF
 INVALID_VOTE_TARGET
 ```
 
+## 마피아 처형 찬반 투표 제출
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/judgment-votes
+```
+
+``` json
+{ "choice": "EXECUTE" }
+```
+
+`choice`는 `EXECUTE` 또는 `SAVE`다. 최종 지목자를 제외한 생존 Player만 한
+번 제출할 수 있다. 투표 중에도 `executeCount`, `saveCount`, 완료 인원을
+`/state`와 상태 변경 이벤트로 공개한다. 개인별 선택은 공개하지 않는다.
+전원 완료 시 `executeCount > saveCount`일 때만 처형하며 동률은 살린다.
+
+Response: `204 No Content`
+
 ## 마피아 결과 단계 진행
 
 ``` http
@@ -1529,12 +1555,16 @@ POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/advance
 Request body 없음. 방장만 다음 전환을 요청할 수 있다.
 
 ``` text
-VOTE_RESULT → EXECUTION
+VOTE_RESULT → JUDGMENT
+JUDGMENT_RESULT → EXECUTION 또는 NIGHT
 EXECUTION → NIGHT 또는 FINISHED
 NIGHT_RESULT → DAY 또는 FINISHED
 ```
 
-`EXECUTION` 진입 시 최종 지목자를 사망 처리하고 역할을 공개한다. 사망이
+`VOTE_RESULT`는 최후의 변론 화면으로 방장이 종료할 때까지 유지한다. 방장이
+종료하면 `JUDGMENT`로 전환한다. `JUDGMENT_RESULT`에서 처형으로
+결정된 경우에만 `EXECUTION` 진입 시 최종 지목자를 사망 처리하고 역할을
+공개한다. 살리기로 결정되면 역할을 공개하지 않고 `NIGHT`로 이동한다. 사망이
 확정되는 `EXECUTION` 및 `NIGHT_RESULT` 처리 시 서버가 승리 조건을 검사하며,
 승리 조건이 충족되면 다음 진행 phase 대신 즉시 `FINISHED`가 된다.
 
