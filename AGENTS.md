@@ -14,8 +14,9 @@
 4. `docs/common/API_SPEC.md`
 5. `docs/common/games/LIAR_GAME_SPEC.md`
 6. `docs/common/games/BLIND_GAME_SPEC.md`
-7. `docs/BACKEND_ARCHITECTURE.md`
-8. `docs/DATABASE.md`
+7. `docs/common/games/MAFIA_GAME_SPEC.md`
+8. `docs/BACKEND_ARCHITECTURE.md`
+9. `docs/DATABASE.md`
 
 공통 서비스/API/Realtime/Game 규칙은 `docs/common/`이 Source of Truth다.
 
@@ -75,6 +76,7 @@ Memory:
 - 최종 추측/결과
 - 연결 상태
 - 블라인드 게임의 Player별 제시어 배정/정답 시도/승자
+- 마피아 게임의 역할/생존 상태/밤 행동/조사/의심/처형 투표/사망/승패
 
 MySQL:
 - LiarCategory
@@ -150,6 +152,22 @@ Frontend 계산/버튼 숨김을 권한 검증으로 신뢰하지 않는다.
 - 오답 페널티와 시도 횟수 제한 없음
 - 최초 정답자 1명만 원자적으로 승자 확정
 - 질문/답변/순서/턴/타이머는 서버가 관리하지 않음
+
+## 11-2. 마피아 게임 불변 규칙
+
+- 참가자 4~12명, 인원별 역할 구성은 서버가 자동 결정
+- 역할은 `MAFIA`, `POLICE`, `DOCTOR`, `CITIZEN`
+- 첫 밤에는 마피아 공격과 의사 치료 없음
+- 둘째 밤부터 모든 생존자가 역할별 필수 행동을 동시 제출
+- 마피아 공격 다수결, 최다 동률은 동률 대상 중 서버 무작위 선정
+- 경찰 조사 결과는 경찰 본인에게만 공개
+- 의사는 자기 자신을 치료할 수 있지만 직전 밤 대상 연속 치료 금지
+- 시민 의심은 밤별 1회, 변경 금지, 본인이 받은 의심 수만 공개
+- 처형 투표는 모든 생존자가 참여하며 자기 투표·중복·변경 금지
+- 처형 투표 동률은 동률 후보만 대상으로 제한 없이 재투표, 랜덤 지목 금지
+- 최후의 변론 후 지목자를 제외한 생존자가 `EXECUTE` 또는 `SAVE` 투표, 동률은 살림
+- 사망 확정 시 승리 조건 즉시 판정, 사망자 역할 공개, 종료 후 전체 역할 공개
+- 마피아 장기 미접속 Player 제외 정책은 V1 SPEC에 없으므로 임의 추가 금지
 
 ## 12. 투표 비밀
 **다른 Player가 누구에게 투표했는지는 항상 비공개다.**

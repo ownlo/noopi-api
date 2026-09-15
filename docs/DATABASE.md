@@ -21,6 +21,9 @@ NOOPI MVP에서 MySQL에 영구 저장하는 데이터의 범위를 정의한다
 - 연결 상태
 - 같은 Room의 최근 사용 제시어
 - Blind Game phase / Player별 제시어 배정 / 승자
+- Mafia Game phase / 역할 / 생존 상태 / 밤 번호
+- 마피아 밤 행동 / 경찰 조사 기록 / 시민 의심 기록·집계
+- 마피아 처형 투표·재투표 / 찬반 투표 / 사망·승패 결과
 
 ### MySQL
 - `liar_category`
@@ -28,6 +31,7 @@ NOOPI MVP에서 MySQL에 영구 저장하는 데이터의 범위를 정의한다
 - `blind_keyword`
 
 MVP에서 Room/GameSession/Role/Vote 테이블을 만들지 않는다.
+마피아 게임은 영구 콘텐츠를 사용하지 않으므로 별도 MySQL 테이블을 추가하지 않는다.
 
 ## 3. MySQL / Migration
 - MySQL 8.x
@@ -136,6 +140,12 @@ liar_game
 liar_game_role
 liar_game_vote
 liar_game_guess
+mafia_game
+mafia_game_role
+mafia_night_action
+mafia_suspicion
+mafia_vote
+mafia_execution_vote
 ```
 
 서버 재시작 후 진행 중 게임 복구는 현재 MVP 요구가 아니다.
@@ -143,7 +153,11 @@ liar_game_guess
 ## 11. 투표 영구 저장 금지
 개인별 투표는 현재 GameSession Runtime에서 집계에 필요한 동안만 관리한다.
 
-MySQL에 `voter → target` 관계를 영구 저장하지 않는다.
+MySQL에 `voter → target` 관계를 영구 저장하지 않는다. 마피아 처형
+투표와 찬반 투표의 개인별 선택도 게임 Runtime에서만 관리한다.
+
+경찰의 조사 기록, 시민의 밤별 의심, 마피아 공격·의사 치료 선택도
+GameSession Runtime 상태이며 MySQL에 영구 저장하지 않는다.
 
 향후 통계/감사 요구가 생기면 투표 비밀 정책을 포함해 별도 설계한다.
 

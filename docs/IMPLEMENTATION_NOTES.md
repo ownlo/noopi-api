@@ -1,5 +1,34 @@
 # MVP 구현 결정과 SPEC 정합성
 
+## 마피아 게임 명세 반영
+
+공통 `MAFIA_GAME_SPEC.md`와 API/Realtime 계약을 Backend 문서에 반영했다.
+
+마피아 상태는 `MafiaGameRuntime`이 소유하며 역할·생존 상태, 밤 행동,
+경찰 조사 기록, 시민 의심 기록·집계, 처형·재투표·찬반 투표와 승패를
+GameSession Memory에서 관리한다. 별도 영구 콘텐츠가 없으므로 마피아 전용 DB
+테이블을 추가하지 않는다.
+
+역할, 마피아 동료, 경찰 조사 결과, 시민별 의심 대상·개인 의심 수는
+요청 Player 기준 Projection으로 보호한다. WebSocket은 공개 가능한 phase·완료
+상태만 알리고 Client는 `/state`로 복구한다. 처형 투표의 개인별 대상과 찬반
+투표의 개인별 선택은 종료 후에도 공개하지 않는다.
+
+공통 SPEC에서 마피아 장기 미접속 Player 제외 정책은 V1 범위로 정의하지
+않았다. 라이어 게임의 exclude/자동 취소 정책을 마피아에 임의로 적용하지 않는다.
+
+현재 SPEC: `MAFIA_GAME_SPEC.md` 18.1절·30절은 `VOTE_RESULT → EXECUTION`을
+기술하고 `JUDGMENT`/`JUDGMENT_RESULT`를 phase 목록에 포함하지 않는다.
+
+충돌/누락: `API_SPEC.md` 36.8절의 최후의 변론·찬반 투표 계약은
+`VOTE_RESULT → JUDGMENT → JUDGMENT_RESULT → EXECUTION 또는 NIGHT`를 사용한다.
+
+제안: 다음 공통 SPEC 정리 시 `MAFIA_GAME_SPEC.md`의 phase 목록·전체 흐름을
+API 계약과 같은 `JUDGMENT`/`JUDGMENT_RESULT` 단계로 정정한다.
+
+영향 범위: phase enum, 방장 단계 진행, 찬반 투표 제출, `/state`,
+`MAFIA_PHASE_CHANGED` 이벤트. Backend 문서와 현재 구현은 API 계약의 phase를 기준으로 기록한다.
+
 ## 블라인드 게임 명세 추가
 
 공통 `BLIND_GAME_SPEC.md`와 API/Realtime 계약에 `BLIND`를 추가했다.

@@ -10,6 +10,7 @@
 - `docs/common/API_SPEC.md`
 - `docs/common/games/LIAR_GAME_SPEC.md`
 - `docs/common/games/BLIND_GAME_SPEC.md`
+- `docs/common/games/MAFIA_GAME_SPEC.md`
 
 Backend 전용 구현 원칙은 이 문서와 `DATABASE.md`를 따른다. 공통 계약과 충돌할 경우 공통 계약을 임의로 변경하지 말고 충돌을 보고한다.
 
@@ -40,6 +41,7 @@ Mobile Web
  ├─ GameSession Runtime
  ├─ Liar Game Runtime
  ├─ Blind Game Runtime
+ ├─ Mafia Game Runtime
  ├─ Realtime
  └─ Persistence
        ↓
@@ -77,6 +79,8 @@ MVP에서 다음은 서버 Memory에 둔다.
 - 투표, voteRound, 재투표 후보
 - 라이어 최종 추측과 게임 결과
 - 블라인드 Player별 제시어 배정, 정답 시도와 승자
+- 마피아 역할·생존 상태, 밤 번호와 phase, 밤 행동, 경찰 조사 기록, 시민 의심 기록·집계
+- 마피아 공격·의사 치료·사망 판정, 처형 투표·재투표·찬반 투표, 승리 팀
 - 최근 사용 제시어 식별값
 - WebSocket 연결 관련 Runtime 정보
 
@@ -93,6 +97,9 @@ class RoomRuntime {
 
 블라인드 상세 상태는 `BlindGameRuntime`이 소유한다. Room과 공통
 GameSession은 Player별 제시어 공개 규칙이나 승리 조건을 알지 않는다.
+
+마피아 상세 상태는 `MafiaGameRuntime`이 소유한다. Room과 공통
+GameSession은 역할별 밤 행동, 사망·승패 판정, 개인 정보 공개 규칙을 알지 않는다.
 
 ## 7. Persistence
 MySQL은 영구 관리가 필요한 게임별 콘텐츠에 사용한다.
@@ -199,6 +206,34 @@ Runtime 원본에는 두 배정을 보관할 수 있지만 `/state` Projection�
 
 질문, 답변, 순서, 턴, 질문 횟수와 타이머 상태는 Runtime에 추가하지 않는다.
 
+## 16-2. Mafia Game Runtime
+
+마피아 게임은 4~12명을 검증하고 참가자 수에 따라 `MAFIA`, `POLICE`,
+`DOCTOR`, `CITIZEN` 구성을 서버가 자동 결정한다. 주요 phase는
+`ROLE_REVEAL`, `FIRST_NIGHT`, `DAY`, `VOTING`, `REVOTING`, `VOTE_RESULT`,
+`JUDGMENT`, `JUDGMENT_RESULT`, `EXECUTION`, `NIGHT`, `NIGHT_RESULT`, `FINISHED`다.
+
+모든 생존자의 필수 밤 행동은 동시에 받되 Room 단위 동시성 경계 안에서
+한 번만 적용한다. 첫 밤에는 경찰 조사·시민 의심·의사 확인만 수행하고
+공격·치료는 하지 않는다. 둘째 밤부터 마피아 공격, 경찰 조사, 의사 치료,
+시민 의심을 동시 처리한다. 마피아 공격 최다 동률은 동률 대상 중 서버가
+무작위 선정하며, 의사는 직전 밤의 치료 대상을 연속으로 선택할 수 없다.
+
+낮 처형 투표는 모든 생존자가 참여하고, 최다 동률이면 동률 후보만으로
+제한 없이 재투표한다. 단독 지목자가 결정되면 최후의 변론 후 지목자를
+제외한 생존자가 `EXECUTE` 또는 `SAVE`를 선택한다. `executeCount > saveCount`일
+때만 처형하고 동률은 살린다. 사망이 확정될 때마다 `aliveMafia == 0`이면
+시민팀, `aliveMafia >= aliveCitizenTeam`이면 마피아팀 승리로 즉시 종료한다.
+
+`/state`는 요청 Player 기준 Projection을 만든다. 요청자에게 허용되지 않은
+살아 있는 다른 Player의 역할, 마피아 동료, 경찰 조사 결과, 시민별
+의심 대상과 다른 Player의 의심 수를 노출하지 않는다. 마피아 동료는
+마피아 본인에게만, 경찰 조사 기록은 경찰 본인에게만 제공한다. 사망과
+함께 공개된 역할과 게임 종료 후 전체 역할은 공개한다.
+방장의 결과 단계 진행은 API 계약의 `VOTE_RESULT → JUDGMENT`,
+`JUDGMENT_RESULT → EXECUTION 또는 NIGHT`, `EXECUTION → NIGHT 또는 FINISHED`,
+`NIGHT_RESULT → DAY 또는 FINISHED`에서만 허용한다.
+
 ## 17. Disconnect / Reconnect
 WebSocket 연결 종료는 Room 탈퇴가 아니다. Player를 `DISCONNECTED`로 표시하고 일정 시간 재접속을 허용한다.
 
@@ -232,6 +267,8 @@ Host가 Disconnect되어도 Room을 자동 종료하거나 Host 권한을 이전
 - 투표 완료 집계와 phase 전환
 - disconnect/exclude와 vote submit 경합
 - 블라인드 동시 정답 제출과 승자 확정
+- 마피아 마지막 역할 확인·밤 행동·처형 투표 제출과 phase 전환
+- 마피아 밤 결과·사망·승리 판정과 방장의 결과 단계 진행
 
 전역 Lock 하나로 모든 Room을 직렬화하지 않는다.
 
@@ -267,7 +304,7 @@ In-Memory Room은 `createdAt`, `lastActivityAt` 등을 갖고 Scheduled cleanup�
 -XX:MaxMetaspaceSize=192m
 ```
 
-Actuator health와 기본 구조화 로그를 사용한다. 일반 운영 로그에 제시어, 전체 역할 목록, 개인별 투표 대상 같은 게임 비밀을 불필요하게 남기지 않는다.
+Actuator health와 기본 구조화 로그를 사용한다. 일반 운영 로그에 제시어, 전체 역할 목록, 개인별 투표 대상, 마피아 동료, 경찰 조사 결과, 시민별 의심 대상 같은 게임 비밀을 불필요하게 남기지 않는다.
 
 ## 25. 확장
 다중 Spring Boot 인스턴스가 필요해지면 In-Memory Runtime 공유 문제가 생긴다. 그 시점에 Redis 등 공유 Runtime 저장소/메시징을 검토한다.
