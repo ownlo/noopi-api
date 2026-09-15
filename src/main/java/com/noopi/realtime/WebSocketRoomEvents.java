@@ -40,7 +40,7 @@ public class WebSocketRoomEvents implements RoomEvents {
         TextMessage message;
         try {
             message = new TextMessage(json.writeValueAsString(new Event(UUID.randomUUID().toString(), type,
-                room.id, gameSessionId, clock.instant(), Map.copyOf(payload))));
+                room.id, gameSessionId, clock.instant(), Collections.unmodifiableMap(new LinkedHashMap<>(payload)))));
         } catch (Exception ex) {
             log.error("Event serialization failed: type={}", type);
             return;

@@ -2,6 +2,19 @@
 
 Java 26 · Spring Boot 3.5 · Spring MVC/WebSocket · JPA · MySQL 8 · Flyway.
 
+## 문서 기준과 윷놀이 구현 범위
+
+`docs/common/`은 `noopi-web/docs/common/`과 파일 구성 및 내용이 동일하다.
+공통 명세는 라이어·블라인드·마피아·윷놀이를 포함한다. 현재 서버 코드는
+라이어/블라인드/마피아/윷놀이를 지원한다. 윷놀이는 개인전/팀전, 추가 던지기,
+이동권, 지름길, 업기/잡기/완주와 승리를 서버 Runtime에서 처리한다.
+
+- [윷놀이 규칙](docs/common/games/YUT_GAME_SPEC.md): 개인전/팀전, 턴, 지름길, 업기/잡기/완주.
+- [API 계약](docs/common/API_SPEC.md): 윷놀이 행동 API, 개인화 상태, 이벤트와 오류.
+- [백엔드 구조](docs/BACKEND_ARCHITECTURE.md): Runtime/동시성/Projection 구현 목표.
+- [구현 노트](docs/IMPLEMENTATION_NOTES.md): 구현 체크리스트, 미확정 보드 ID 및 연동 차이.
+- [운영 API](docs/OPERATIONS_API.md): 기존 일별 통계 계약 보존. 공통 게임 계약과 별도 관리.
+
 ## 실행
 
 ```sh
@@ -51,8 +64,9 @@ curl -X POST http://localhost:8080/api/rooms \
 ```
 
 반환된 `roomId`로 다른 브라우저의 Player를 참가시킨 뒤 GameSession을 생성·시작한다.
-라이어, 블라인드, 마피아 게임의 상세 행동·응답·이벤트 계약은
-`docs/common/API_SPEC.md`를 따른다.
+라이어, 블라인드, 마피아, 윷놀이의 상세 행동·응답·이벤트 계약은
+`docs/common/API_SPEC.md`를 따른다. 윷놀이의 5개 전용 엔드포인트와 공통
+카탈로그·생성·시작·취소·상태 조회가 연결되어 있다.
 
 ## WebSocket
 
@@ -84,6 +98,7 @@ REST로 행동을 제출하며 역할/제시어는 개인별 `/state`로 조회�
 - `game/liar`: 라이어 규칙, 비공개 runtime, 개인별 allowlist projection.
 - `game/blind`: 블라인드 제시어 배정, 개인별 상대 제시어 projection, 정답 판정과 원자적 승자 확정.
 - `game/mafia`: 마피아 역할·phase, 밤 행동, 의심, 처형 투표, 사망·승패 판정과 개인별 projection.
+- `game/yut`: Node/Edge 경로, 팀·턴·이동권, 업기/잡기/완주와 개인별 행동 projection.
 - `application`: Room 잠금 안에서 REST 행동을 조정, TTL 및 장기 disconnect 처리.
 - `content`: 콘텐츠 3개 JPA Entity, Repository, 활성 콘텐츠 선택.
 - `realtime`: Room 검증, 연결 관리, 계약에 정의된 공개 이벤트 전달.
@@ -99,14 +114,14 @@ REVOTING/LIAR_GUESS/FINISHED로 이동하며 별도 타이머나 진행 버튼�
 
 | 환경 변수 | 기본값 | 의미 |
 |---|---|---|
-| `DISCONNECT_GRACE` | `PT2M` | 제외 가능 시간, 장기 라이어 이탈/방장 승계 기준 |
+| `DISCONNECT_GRACE` | `PT2M` | 라이어 제외 가능 시간, 장기 라이어 이탈 기준 |
 | `ROOM_TTL` | `PT12H` | 마지막 Room 활동 이후 Runtime 만료 |
 | `CLEANUP_INTERVAL_MS` | `60000` | 정리 주기 |
 | `RECENT_KEYWORD_COUNT` | `10` | Room별 최근 제시어 회피 개수 |
 | `ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:5173` | REST CORS 및 WebSocket 허용 Origin |
 
-명시적 방장 탈퇴 시 남아 있는 참가 순서상 첫 Player가 승계한다.
-장기 방장 미접속 시 연결된 Player 중 참가 순서상 첫 Player가 승계한다.
+명시적 방장 탈퇴 시 `ROOM_CLOSED`를 `HOST_LEFT` 사유로 발행하고 Room을 종료한다.
+방장 미접속만으로 자동 종료/승계하지 않는다. 참가 가능한 Room의 신규 조회/참가를 허용한다.
 장기 라이어 미접속은 정리 주기에서 취소한다. 재접속이 잠금을 먼저 획득하면 취소되지 않는다.
 최근 제시어를 모두 소진하면 활성 후보를 다시 허용한다.
 단일 인스턴스용이며 서버 재시작 시 Room과 진행 중 게임이 사라진다.
@@ -129,8 +144,17 @@ Hibernate는 `validate`만 수행한다.
 
 ## 계약상 남아 있는 범위
 
+윷놀이 Node/Path ID는 공통 게임 명세 9.1절로 확정했다. 던지기는 기존 body
+없는 POST를 유지한다. 현재 단계와 Room 잠금으로 중복 처리를 방어하지만,
+연속 추가 던지기 중 지연 재전송과 의도된 다음 던지기의 완전한 구분에는
+별도 요청 식별 계약이 필요하다. Client는 자동 재시도하지 않고 `/state`로 복구한다.
+
+윷놀이 테스트는 `./gradlew test --tests com.noopi.YutGameRulesTest --tests com.noopi.YutHttpIntegrationTest`로 실행한다.
+전체 회귀 검증은 `./gradlew test build`를 사용한다. 프론트는 개발 모드에서
+`http://localhost:8080/api`와 `ws://localhost:8080/ws`에 연결하며 Mock을 꺼야 한다.
+
 서비스 문서에 Room 종료 권한이 있으나 API_SPEC에 명시적 Room 종료 엔드포인트는 없다.
-새 엔드포인트를 임의로 만들지 않았다. 마지막 Player 탈퇴 및 TTL 만료로 Room은 정리된다.
+새 엔드포인트를 임의로 만들지 않았다. 방장의 명시적 나가기 및 TTL 만료로 Room은 정리된다.
 exclude 전용 WebSocket 이벤트도 정의되어 있지 않아 임의 이벤트를 추가하지 않았다.
 제외 요청 완료 후 `/state`를 다시 조회한다. 집계/취소가 발생하면 해당 표준 게임 이벤트를 전달한다.
 
@@ -141,7 +165,8 @@ exclude 전용 WebSocket 이벤트도 정의되어 있지 않아 임의 이벤�
 예: `from=2026-09-01`, `to=2026-09-13` (양 끝 포함, 최대 366일). 키 미설정 시 조회는 차단된다.
 
 한국 시간 기준 방 생성/종료 수, 종료된 방의 총·평균·최대 지속시간(분),
-LIAR/BLIND/MAFIA별 시작·완료·취소 수와 참가 인원 합계를 반환한다.
+현재 조회 구현은 LIAR/BLIND별 시작·완료·취소 수와 참가 인원 합계를 반환한다.
+MAFIA/YUT 통계 응답 확장은 별도 구현 대상이다. 상세 계약은 `docs/OPERATIONS_API.md`를 따른다.
 `started`가 실제 플레이 횟수이고 READY 취소는 제외한다. 시작된 게임이 방 삭제로
 사라지면 통계상 취소로 집계한다. 자정을 넘긴 방의 전체 지속시간은 종료일에 반영한다.
 

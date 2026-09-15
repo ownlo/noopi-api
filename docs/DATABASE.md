@@ -24,6 +24,12 @@ NOOPI MVP에서 MySQL에 영구 저장하는 데이터의 범위를 정의한다
 - Mafia Game phase / 역할 / 생존 상태 / 밤 번호
 - 마피아 밤 행동 / 경찰 조사 기록 / 시민 의심 기록·집계
 - 마피아 처형 투표·재투표 / 찬반 투표 / 사망·승패 결과
+- Yut Game mode / 팀 구성 / 턴 순서와 phase / 이동권 / 추가 던지기
+- 윷놀이 말 상태와 Node/경로 / 업힌 그룹 / 선택 중인 행동 / 완주 현황과 승자
+
+윷판 Node/Edge 그래프는 게임 모듈의 규칙 정의다. 윷놀이를 위해 콘텐츠
+테이블이나 Runtime 영속화 테이블을 추가하지 않는다. 재접속 복구는 살아
+있는 서버 Runtime의 `/state` 조회이며 서버 재시작 후 복구와 구분한다.
 
 ### MySQL
 - `liar_category`
@@ -146,6 +152,10 @@ mafia_night_action
 mafia_suspicion
 mafia_vote
 mafia_execution_vote
+yut_game
+yut_piece
+yut_move_token
+yut_turn
 ```
 
 서버 재시작 후 진행 중 게임 복구는 현재 MVP 요구가 아니다.
@@ -262,4 +272,4 @@ cancelled, participant_count (모두 BIGINT). 날짜는 한국 시간이다.
 프로세스별 누적 snapshot을 upsert하여 저장 재시도가 중복 합산되지 않도록 한다.
 조회는 인스턴스별 행을 날짜/게임별 합산한다. SQL은 Flyway V5가 정의하며 JdbcTemplate으로 처리한다.
 방 단위 lock 안에서는 메모리 집계만 변경하고 DB 저장은 별도 주기 작업으로 수행한다.
-API 계약과 지표의 정의/유실 한계는 공통 API_SPEC의 운영 일별 통계를 따른다.
+운영 통계 API 계약과 지표의 정의/유실 한계는 `OPERATIONS_API.md`를 따른다.

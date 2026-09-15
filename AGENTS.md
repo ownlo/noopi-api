@@ -15,8 +15,14 @@
 5. `docs/common/games/LIAR_GAME_SPEC.md`
 6. `docs/common/games/BLIND_GAME_SPEC.md`
 7. `docs/common/games/MAFIA_GAME_SPEC.md`
-8. `docs/BACKEND_ARCHITECTURE.md`
-9. `docs/DATABASE.md`
+8. `docs/common/games/YUT_GAME_SPEC.md`
+9. `docs/BACKEND_ARCHITECTURE.md`
+10. `docs/DATABASE.md`
+11. `docs/IMPLEMENTATION_NOTES.md`
+
+`docs/common/`은 `noopi-web/docs/common/`과 파일 구성 및 내용을 동일하게 유지한다.
+백엔드 전용 운영 계약은 `docs/OPERATIONS_API.md`에서 관리한다.
+공통 명세에 게임이 추가되었다고 실제 Backend 구현까지 완료된 것으로 간주하지 않는다.
 
 공통 서비스/API/Realtime/Game 규칙은 `docs/common/`이 Source of Truth다.
 
@@ -76,6 +82,7 @@ Memory:
 - 최종 추측/결과
 - 연결 상태
 - 블라인드 게임의 Player별 제시어 배정/정답 시도/승자
+- 윷놀이 모드/팀/턴/이동권/말 위치/업힌 그룹/추가 던지기/승자
 - 마피아 게임의 역할/생존 상태/밤 행동/조사/의심/처형 투표/사망/승패
 
 MySQL:
@@ -169,7 +176,25 @@ Frontend 계산/버튼 숨김을 권한 검증으로 신뢰하지 않는다.
 - 사망 확정 시 승리 조건 즉시 판정, 사망자 역할 공개, 종료 후 전체 역할 공개
 - 마피아 장기 미접속 Player 제외 정책은 V1 SPEC에 없으므로 임의 추가 금지
 
+## 11-3. 윷놀이 불변 규칙
+
+윷놀이 구현 시 다음 규칙도 반드시 따른다.
+
+- 개인전 2~4명, 팀전 정확히 4명이며 NOOPI/DAY 각 2명. 소유자별 말 4개.
+- 팀 변경과 정원 검증, 현재 턴/행동/후보 검증은 서버가 원자적으로 처리한다.
+- 4개 윷가락의 앞뒤 조합으로 도/개/걸/윷/모를 판정한다. 백도/낙은 없다.
+- 윷/모 추가 던지기를 먼저 처리하고 이동권을 소비한 뒤 잡기 추가 던지기를 처리한다.
+- 서버 Node/Edge 그래프로 경로를 판정한다. 갈림길을 지나치는 것과 정확히 도착하는 것을 구분한다.
+- 같은 소유자의 말은 업고, 상대 그룹은 정확히 도착했을 때 전부 READY로 돌린다.
+- 잡힌 그룹 크기에 관계없이 추가 던지기 1회, 업힌 그룹은 함께 이동/완주한다.
+- 도착점을 통과해야 완주하며 소유 말 4개가 완주하면 즉시 승리한다.
+- `/state`는 모든 말의 확정 상태와 요청 Player의 `myAction`/후보를 제공한다.
+- 파워 게이지·밀쳐내기·한 칸씩 이동은 Client 연출이다. 요청 필드나 서버 판정으로 사용하지 않는다.
+- Mock의 고정 윷 결과/말 위치/단순 외곽 이동 로직은 Product 규칙으로 복사하지 않는다.
+- 구현 체크리스트와 미확정 계약은 `docs/IMPLEMENTATION_NOTES.md`의 윷놀이 절을 따른다.
+
 ## 12. 투표 비밀
+
 **다른 Player가 누구에게 투표했는지는 항상 비공개다.**
 
 금지:

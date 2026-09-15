@@ -15,7 +15,8 @@ public class CatalogController {
         return Map.of("games", List.of(
             new Game("LIAR", "라이어 게임", 3, 12, true),
             new Game("BLIND", "블라인드 게임", 2, 2, true),
-            new Game("MAFIA", "마피아 게임", 4, 12, true)));
+            new Game("MAFIA", "마피아 게임", 4, 12, true),
+            new Game("YUT", "윷놀이", 2, 4, true)));
     }
     @GetMapping("/liar/categories") public Map<String, List<LiarContent.Category>> categories() {
         return Map.of("categories", content.categories());

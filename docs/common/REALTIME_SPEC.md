@@ -119,6 +119,17 @@ Player의 역할과 게임 종료 후 전체 역할은 공개 정보로 전환�
 -   `MAFIA_REVOTE_STARTED`
 -   `MAFIA_PLAYER_DIED`
 
+윷놀이 대표 이벤트는 다음과 같다.
+
+-   `YUT_TEAM_CHANGED`
+-   `YUT_TURN_CHANGED`
+-   `YUT_THROW_RESOLVED`
+-   `YUT_PIECE_MOVED`
+
+이 이벤트에는 서버가 확정한 공개 결과만 포함한다. 행동 가능 여부와 이동
+가능한 말·경로 후보는 개인화된 `/state`로 조회한다. Client는 이벤트
+payload만으로 말 위치, 업기, 잡기, 완주 또는 승자를 계산하지 않는다.
+
 밤 행동 이벤트에는 행동 타입, 대상, 경찰 조사 결과, 치료 성공 여부를
 broadcast하지 않는다. 상태 변경을 알리는 데 필요한 Player와 완료 인원만
 포함하고, 개인 결과는 제출 응답과 개인화된 `/state`로 제공한다.

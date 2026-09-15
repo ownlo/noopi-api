@@ -36,7 +36,18 @@ public enum ErrorCode {
     PLAYER_DEAD(409, "사망한 Player는 행동할 수 없습니다."),
     INVALID_NIGHT_ACTION(422, "현재 역할과 밤에 허용되지 않는 행동입니다."),
     ACTION_ALREADY_SUBMITTED(409, "이미 이번 밤 행동을 제출했습니다."),
-    INVALID_ACTION_TARGET(422, "유효한 밤 행동 대상이 아닙니다.");
+    INVALID_ACTION_TARGET(422, "유효한 밤 행동 대상이 아닙니다."),
+    NOT_GAME_PARTICIPANT(403, "현재 게임 참가자가 아닙니다."),
+    INVALID_TEAM(400, "유효한 팀을 선택해주세요."),
+    TEAM_FULL(409, "선택한 팀의 정원이 찼어요."),
+    GAME_ALREADY_STARTED(409, "이미 시작된 게임입니다."),
+    NOT_CURRENT_TURN(403, "현재 차례가 아닙니다."),
+    INVALID_TURN_PHASE(409, "현재 차례에서 수행할 수 없는 행동입니다."),
+    MOVE_TOKEN_NOT_FOUND(404, "이동권을 찾을 수 없습니다."),
+    MOVE_TOKEN_ALREADY_USED(409, "이미 사용한 이동권입니다."),
+    PIECE_NOT_ELIGIBLE(422, "이동할 수 없는 말입니다."),
+    PATH_NOT_ELIGIBLE(422, "선택할 수 없는 경로입니다."),
+    ACTION_ALREADY_PROCESSED(409, "이미 처리된 행동입니다.");
 
     public final int status;
     public final String message;

@@ -11,6 +11,10 @@
 - `docs/common/games/LIAR_GAME_SPEC.md`
 - `docs/common/games/BLIND_GAME_SPEC.md`
 - `docs/common/games/MAFIA_GAME_SPEC.md`
+- `docs/common/games/YUT_GAME_SPEC.md`
+
+`docs/common/`은 Frontend의 동일 디렉터리와 내용까지 일치시킨다. 아래 구조는
+구현 목표이며 게임별 실제 구현 여부는 `IMPLEMENTATION_NOTES.md`를 확인한다.
 
 Backend 전용 구현 원칙은 이 문서와 `DATABASE.md`를 따른다. 공통 계약과 충돌할 경우 공통 계약을 임의로 변경하지 말고 충돌을 보고한다.
 
@@ -42,6 +46,7 @@ Mobile Web
  ├─ Liar Game Runtime
  ├─ Blind Game Runtime
  ├─ Mafia Game Runtime
+ ├─ Yut Game Runtime
  ├─ Realtime
  └─ Persistence
        ↓
@@ -81,6 +86,8 @@ MVP에서 다음은 서버 Memory에 둔다.
 - 블라인드 Player별 제시어 배정, 정답 시도와 승자
 - 마피아 역할·생존 상태, 밤 번호와 phase, 밤 행동, 경찰 조사 기록, 시민 의심 기록·집계
 - 마피아 공격·의사 치료·사망 판정, 처형 투표·재투표·찬반 투표, 승리 팀
+- 윷놀이 모드, 팀 구성, 턴 순서/phase, 이동권, 추가 던지기 수
+- 윷놀이 말 위치/경로/그룹/완주 현황, 선택 중인 이동권/말/경로 후보와 승자
 - 최근 사용 제시어 식별값
 - WebSocket 연결 관련 Runtime 정보
 
@@ -234,6 +241,41 @@ Runtime 원본에는 두 배정을 보관할 수 있지만 `/state` Projection�
 `JUDGMENT_RESULT → EXECUTION 또는 NIGHT`, `EXECUTION → NIGHT 또는 FINISHED`,
 `NIGHT_RESULT → DAY 또는 FINISHED`에서만 허용한다.
 
+## 16-3. 윷놀이 Runtime
+
+윷놀이 상세 규칙은 `game/yut` 모듈이 소유한다. Room은 팀 정원, 경로,
+업기/잡기/완주를 계산하지 않는다. 공통 GameSession의 생명주기와 윷놀이의
+`READY`/`TEAM_SELECT`/`PLAYING`/`FINISHED` phase를 구분한다.
+
+서버는 Node/Edge 그래프와 말의 경로 정보를 보관한다. 정확히 갈림길에
+도착한 경우에만 경로 선택을 허용하고, 통과 시 기존 경로를 유지한다.
+Client가 전달하는 것은 계약에 정의된 팀/이동권/말/경로 ID와 던지기 의도뿐이다.
+
+Room 잠금 안에서 현재 턴, 행동 단계, 소유자와 후보를 재검증한 후 이동권
+소비, 그룹 이동, 업기/잡기, 추가 던지기, 완주/승리와 다음 행동을 원자적으로
+확정한다. 팀전은 같은 팀 말 4개를 공유하며 양 팀 Player를 교차 배치한다.
+
+윷/모에 의한 추가 던지기는 이동권 선택보다 우선한다. 잡기로 얻은 추가
+던지기는 기존 이동권을 모두 사용한 뒤 처리한다. 같은 이동권의 중복 소비,
+같은 이동의 중복 잡기 보너스 지급, 종료 후 추가 행동을 막는다.
+
+개인화 Projection은 `turn`, 모든 `pieces`, `finishedPieceCounts`와
+`myAction`을 제공한다. 행동할 수 없는 요청 Player의 `myAction`은 `null`이다.
+`SELECT_PIECE`/`SELECT_PATH` 후보는 서버 계산 결과만 반환한다. 팀 선택 시
+`myTeam`, `selectableTeams`, `canStart`도 요청 Player 기준으로 계산한다.
+
+`YUT_TEAM_CHANGED`, `YUT_TURN_CHANGED`, `YUT_THROW_RESOLVED`,
+`YUT_PIECE_MOVED`는 확정 상태의 갱신 신호다. 공통 시작/종료/취소 이벤트를
+재사용하며 전체 payload는 공통 API 명세를 따른다. 연출 종료를 기다려
+서버 상태를 확정하거나 Client의 애니메이션 완료 요청을 추가하지 않는다.
+
+던지기 API에는 body가 없다. 길게 누르는 파워는 Client 연출일 뿐 서버의
+결과 확률이나 이동 수를 바꾸지 않는다. 재접속 시 이벤트를 재생하지 않고
+현재 선택, 남은 이동권과 보너스를 포함한 `/state`로 복구한다.
+
+윷놀이에는 연결 종료를 이유로 자동 턴 넘김, 자동 이동, 임의 승리 또는
+장기 미접속 제외를 도입하지 않는다. 상세 미확정 항목은 구현 노트를 따른다.
+
 ## 17. Disconnect / Reconnect
 WebSocket 연결 종료는 Room 탈퇴가 아니다. Player를 `DISCONNECTED`로 표시하고 일정 시간 재접속을 허용한다.
 
@@ -248,7 +290,7 @@ WebSocket 연결 종료는 Room 탈퇴가 아니다. Player를 `DISCONNECTED`로
 ## 18. Host
 Room 생성자가 최초 Host다.
 
-Host가 Disconnect되어도 Room을 자동 종료하거나 Host 권한을 이전하지 않는다. 신규 참가는 차단하며 기존 참가자는 제한 없이 재접속을 기다리거나 직접 Room을 떠날 수 있다. Host가 나가기 API로 명시적으로 Room을 떠나면 `ROOM_CLOSED` 이벤트를 `HOST_LEFT` 사유로 발행한 뒤 Room을 삭제한다.
+Host가 Disconnect되어도 Room을 자동 종료하거나 Host 권한을 이전하지 않는다. 참가 가능한 Room이면 신규 조회/참가를 허용하며 기존 참가자는 제한 없이 재접속을 기다리거나 직접 Room을 떠날 수 있다. Host가 나가기 API로 명시적으로 Room을 떠나면 `ROOM_CLOSED` 이벤트를 `HOST_LEFT` 사유로 발행한 뒤 Room을 삭제한다.
 
 ## 19. WebSocket
 개념 endpoint는 `/ws`다.
@@ -269,6 +311,7 @@ Host가 Disconnect되어도 Room을 자동 종료하거나 Host 권한을 이전
 - 블라인드 동시 정답 제출과 승자 확정
 - 마피아 마지막 역할 확인·밤 행동·처형 투표 제출과 phase 전환
 - 마피아 밤 결과·사망·승리 판정과 방장의 결과 단계 진행
+- 윷놀이 팀 정원 경쟁, 이동권 중복 소비, 그룹 이동/잡기/완주와 승리 확정
 
 전역 Lock 하나로 모든 Room을 직렬화하지 않는다.
 
@@ -334,4 +377,4 @@ cancelled, participant_count (모두 BIGINT). 날짜는 한국 시간이다.
 프로세스별 누적 snapshot을 upsert하여 저장 재시도가 중복 합산되지 않도록 한다.
 조회는 인스턴스별 행을 날짜/게임별 합산한다. SQL은 Flyway V5가 정의하며 JdbcTemplate으로 처리한다.
 방 단위 lock 안에서는 메모리 집계만 변경하고 DB 저장은 별도 주기 작업으로 수행한다.
-API 계약과 지표의 정의/유실 한계는 공통 API_SPEC의 운영 일별 통계를 따른다.
+운영 통계 API 계약과 지표의 정의/유실 한계는 `OPERATIONS_API.md`를 따른다.

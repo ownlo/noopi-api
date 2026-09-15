@@ -8,7 +8,7 @@
 공통 서비스 규칙은 `SERVICE_SPEC.md`, GameSession 생명주기는
 `GAME_SESSION_SPEC.md`, 실시간 원칙은 `REALTIME_SPEC.md`, 게임별 규칙은
 `games/LIAR_GAME_SPEC.md`, `games/BLIND_GAME_SPEC.md`,
-`games/MAFIA_GAME_SPEC.md`를 따른다.
+`games/MAFIA_GAME_SPEC.md`, `games/YUT_GAME_SPEC.md`를 따른다.
 
 서버의 현재 상태가 Source of Truth이며, 클라이언트는 게임
 상태·역할·승패·투표 결과를 자체 계산하지 않는다.
@@ -712,6 +712,13 @@ Response `200 OK`:
       "minPlayers": 4,
       "maxPlayers": 12,
       "enabled": true
+    },
+    {
+      "gameType": "YUT",
+      "name": "윷놀이",
+      "minPlayers": 2,
+      "maxPlayers": 4,
+      "enabled": true
     }
   ]
 }
@@ -815,6 +822,31 @@ Request --- 마피아 게임:
   "config": {}
 }
 ```
+
+Request --- 윷놀이 개인전:
+
+``` json
+{
+  "gameType": "YUT",
+  "config": {
+    "mode": "INDIVIDUAL"
+  }
+}
+```
+
+Request --- 윷놀이 팀전:
+
+``` json
+{
+  "gameType": "YUT",
+  "config": {
+    "mode": "TEAM"
+  }
+}
+```
+
+개인전은 2~4명, 팀전은 정확히 4명만 허용한다. 팀전 생성 직후 게임 phase는
+`TEAM_SELECT`이며 양 팀이 2명씩 채워지기 전에는 시작할 수 없다.
 
 마피아 게임의 역할 구성은 시작 시점의 참가 인원에 따라 서버가 자동으로
 결정한다. Client가 역할별 인원이나 기타 게임 설정을 보내면
@@ -2169,6 +2201,284 @@ Room broadcast:
 
 ------------------------------------------------------------------------
 
+# Yut Game API
+
+## 윷놀이 상태 조회 계약
+
+`GET /api/rooms/{roomId}/state`의 `gameState.type = "YUT"`이면 모든 판정이
+끝난 서버 상태와 현재 Player에게 허용된 행동만 반환한다.
+
+팀 선택 단계 예시:
+
+``` json
+{
+  "type": "YUT",
+  "phase": "TEAM_SELECT",
+  "mode": "TEAM",
+  "teams": [
+    {
+      "team": "NOOPI",
+      "name": "누피팀",
+      "capacity": 2,
+      "players": [{ "playerId": 12, "nickname": "종윤" }]
+    },
+    {
+      "team": "DAY",
+      "name": "데이팀",
+      "capacity": 2,
+      "players": []
+    }
+  ],
+  "myTeam": null,
+  "selectableTeams": ["NOOPI", "DAY"],
+  "canStart": false
+}
+```
+
+`selectableTeams`는 서버가 정원과 현재 소속을 반영한 결과다. `canStart`는
+요청자가 방장이고 양 팀이 2명씩 채워졌을 때만 `true`다.
+
+진행 단계 예시:
+
+``` json
+{
+  "type": "YUT",
+  "phase": "PLAYING",
+  "mode": "TEAM",
+  "turn": {
+    "turnNo": 7,
+    "currentPlayerId": 13,
+    "turnPhase": "WAITING_MOVE",
+    "throwResults": ["YUT", "GAE"],
+    "moveTokens": [
+      { "moveTokenId": "mt-31", "result": "YUT", "steps": 4 },
+      { "moveTokenId": "mt-32", "result": "GAE", "steps": 2 }
+    ],
+    "pendingBonusThrows": 0
+  },
+  "pieces": [
+    {
+      "pieceId": "NOOPI-1",
+      "ownerType": "TEAM",
+      "ownerId": "NOOPI",
+      "status": "ON_BOARD",
+      "nodeId": "OUTER_3",
+      "groupPieceIds": ["NOOPI-1", "NOOPI-2"]
+    }
+  ],
+  "finishedPieceCounts": [
+    { "ownerId": "NOOPI", "count": 0 },
+    { "ownerId": "DAY", "count": 0 }
+  ],
+  "myAction": {
+    "type": "SELECT_MOVE_TOKEN",
+    "moveTokenIds": ["mt-31", "mt-32"]
+  }
+}
+```
+
+`pieces`에는 모든 말의 서버 확정 상태를 반환한다. `nodeId`는 화면 좌표가
+아닌 서버 보드 그래프의 안정적인 Node ID다. `READY`와 `FINISHED` 말의
+`nodeId`는 `null`이다. 같은 그룹의 각 말은 동일한 `groupPieceIds`를 가진다.
+
+전체 Node/Path ID와 도착점 통과 기준은 `games/YUT_GAME_SPEC.md` 9.1절을
+따른다. 문자열 ID인 `pieceId`, `ownerId`, `moveTokenId`, `nodeId`, `pathId`는
+숫자형 Room/Player/GameSession ID와 구분한다. 개인전 `ownerId`는 Player ID의
+문자열 표현이며 팀전은 `NOOPI` 또는 `DAY`다.
+
+`myAction`은 현재 요청 Player가 행동할 수 없으면 `null`이며, 다음 중 하나다.
+
+``` text
+THROW_YUT
+SELECT_MOVE_TOKEN
+SELECT_PIECE
+SELECT_PATH
+```
+
+`SELECT_PIECE`는 선택한 `moveTokenId`와 서버가 계산한 `eligiblePieceIds`를,
+`SELECT_PATH`는 선택한 말과 이동권 및 `eligiblePathIds`를 포함한다. Frontend는
+전체 말이나 보드 그래프로 후보를 다시 계산하지 않는다.
+
+종료 단계는 개인전이면 `winnerPlayer`, 팀전이면 `winnerTeam`을 반환한다.
+두 필드는 상호 배타적이며 서버가 판정한 결과만 사용한다.
+
+## 팀 선택/변경
+
+``` http
+PUT /api/rooms/{roomId}/game-sessions/{gameSessionId}/yut/team
+```
+
+``` json
+{ "team": "NOOPI" }
+```
+
+Response `204 No Content`. 같은 Endpoint로 시작 전 팀 변경을 요청한다.
+
+주요 오류:
+
+``` text
+NOT_GAME_PARTICIPANT
+INVALID_GAME_PHASE
+INVALID_TEAM
+TEAM_FULL
+GAME_ALREADY_STARTED
+```
+
+## 윷 던지기
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/yut/throws
+```
+
+Request body는 없다. Response `200 OK`:
+
+``` json
+{
+  "result": "YUT",
+  "steps": 4,
+  "moveTokenId": "mt-31",
+  "bonusThrowGranted": true
+}
+```
+
+서버가 현재 턴과 phase를 검증하고 윷가락 4개의 결과로 최종 결과를 정한다.
+
+길게 누르는 시간/파워는 Client 연출이며 Request에 포함하지 않는다.
+서버는 각 윷가락의 앞뒤를 독립적으로 결정한다. 앞면 수가 1/2/3/4이면
+DO/GAE/GEOL/YUT, 0이면 MO다.
+
+중복 요청은 Room 단위 잠금과 현재 행동 단계 검증으로 보호한다. 이 body
+없는 계약만으로는 같은 Player의 연속 추가 던지기와 이전 요청의 지연 재전송을
+완전히 구분할 수 없다. Client는 처리 중 중복 입력과 던지기 자동 재시도를
+하지 않고, 응답이 유실되면 `/state`부터 조회한다. 요청 식별자 계약은 V1에 추가하지 않는다.
+
+## 이동권 선택
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/yut/move-selections
+```
+
+``` json
+{ "moveTokenId": "mt-31" }
+```
+
+Response `204 No Content`. 이후 `/state`의 `myAction = SELECT_PIECE`에서
+서버가 계산한 이동 가능한 말 또는 그룹 대표 말 후보를 조회한다.
+
+## 말 선택
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/yut/piece-selections
+```
+
+``` json
+{ "pieceId": "NOOPI-1" }
+```
+
+경로 선택이 없으면 서버가 이동을 즉시 확정하고 `200 OK`로 결과를 반환한다.
+경로 선택이 필요하면 `202 Accepted`로 현재 선택만 저장하며 `/state`의
+`myAction = SELECT_PATH`에서 경로 후보를 제공한다.
+
+`202 Accepted` 응답 body는 비어 있다. Client는 이를 JSON으로 파싱하지 않는다.
+이동권 선택과 경로 대기 상태도 `/state`로 복구한다.
+
+## 경로 선택
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/yut/path-selections
+```
+
+``` json
+{ "pathId": "CENTER_SHORTCUT_A" }
+```
+
+Response `200 OK`의 이동 결과 예시:
+
+``` json
+{
+  "pieceIds": ["NOOPI-1", "NOOPI-2"],
+  "fromNodeId": "OUTER_3",
+  "toNodeId": "CENTER_1",
+  "finished": false,
+  "stackedPieceIds": [],
+  "capturedPieceIds": ["DAY-1"],
+  "bonusThrowGranted": true
+}
+```
+
+말 이동 관련 API의 공통 주요 오류:
+
+``` text
+NOT_CURRENT_TURN
+INVALID_TURN_PHASE
+MOVE_TOKEN_NOT_FOUND
+MOVE_TOKEN_ALREADY_USED
+PIECE_NOT_ELIGIBLE
+PATH_NOT_ELIGIBLE
+ACTION_ALREADY_PROCESSED
+```
+
+윷놀이 오류 HTTP Status: `NOT_GAME_PARTICIPANT`/`NOT_CURRENT_TURN`은 403,
+`INVALID_TEAM`은 400, `MOVE_TOKEN_NOT_FOUND`는 404,
+`PIECE_NOT_ELIGIBLE`/`PATH_NOT_ELIGIBLE`은 422다.
+`TEAM_FULL`, `GAME_ALREADY_STARTED`, `INVALID_GAME_PHASE`, `INVALID_TURN_PHASE`,
+`MOVE_TOKEN_ALREADY_USED`, `ACTION_ALREADY_PROCESSED`는 409다.
+종료 후 행동은 공통 `GAME_SESSION_ALREADY_FINISHED`(409)를 사용한다.
+
+## 윷놀이 WebSocket 이벤트
+
+모든 이벤트는 상태 갱신 신호이며 수신 후 `room-state` Query를 invalidate한다.
+
+``` json
+{
+  "type": "YUT_TEAM_CHANGED",
+  "gameSessionId": 55,
+  "payload": { "playerId": 13, "team": "NOOPI" }
+}
+```
+
+``` json
+{
+  "type": "YUT_TURN_CHANGED",
+  "gameSessionId": 55,
+  "payload": { "turnNo": 8, "currentPlayerId": 14 }
+}
+```
+
+``` json
+{
+  "type": "YUT_THROW_RESOLVED",
+  "gameSessionId": 55,
+  "payload": {
+    "playerId": 13,
+    "result": "YUT",
+    "steps": 4,
+    "bonusThrowGranted": true
+  }
+}
+```
+
+``` json
+{
+  "type": "YUT_PIECE_MOVED",
+  "gameSessionId": 55,
+  "payload": {
+    "playerId": 13,
+    "pieceIds": ["NOOPI-1", "NOOPI-2"],
+    "fromNodeId": "OUTER_3",
+    "toNodeId": "CENTER_1",
+    "finished": false,
+    "stackedPieceIds": [],
+    "capturedPieceIds": ["DAY-1"],
+    "bonusThrowGranted": true
+  }
+}
+```
+
+후보 목록은 broadcast하지 않고 개인화된 `/state`로 제공한다.
+
+------------------------------------------------------------------------
+
 # Security / Information Exposure
 
 ## 29. 절대 공개하면 안 되는 정보
@@ -2411,6 +2721,16 @@ Frontend는 다음 규칙을 따른다.
 
   `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/cancel`                       GameSession
                                                                                                  취소
+
+  `PUT`         `/api/rooms/{roomId}/game-sessions/{gameSessionId}/yut/team`                     윷놀이 팀 선택/변경
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/yut/throws`                   윷 던지기
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/yut/move-selections`          이동권 선택
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/yut/piece-selections`         말 선택
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/yut/path-selections`          경로 선택
 
   `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/liar/role-check`              역할 확인
 

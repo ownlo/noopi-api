@@ -7,6 +7,8 @@ import com.noopi.game.liar.LiarGameService;
 import com.noopi.game.liar.LiarStateProjection;
 import com.noopi.game.mafia.MafiaGameService;
 import com.noopi.game.mafia.MafiaStateProjection;
+import com.noopi.game.yut.YutGameService;
+import com.noopi.game.yut.YutStateProjection;
 import com.noopi.game.session.GameSessionRuntime;
 import com.noopi.realtime.RoomEvents;
 import com.noopi.room.*;
@@ -27,17 +29,32 @@ public class GameApplication {
     private final BlindStateProjection blindProjection;
     private final MafiaGameService mafia;
     private final MafiaStateProjection mafiaProjection;
+    private final YutGameService yut;
+    private final YutStateProjection yutProjection;
     private final RoomEvents events;
     private final Clock clock;
     private final Duration disconnectGrace;
     @Autowired
     public GameApplication(RoomStore rooms, LiarGameService liar, LiarStateProjection projection,
                            BlindGameService blind, BlindStateProjection blindProjection,
-                           MafiaGameService mafia, MafiaStateProjection mafiaProjection, RoomEvents events,
+                           MafiaGameService mafia, MafiaStateProjection mafiaProjection,
+                           YutGameService yut, YutStateProjection yutProjection, RoomEvents events,
                            Clock clock, @Value("${noopi.disconnect-grace:PT2M}") Duration disconnectGrace) {
         this.rooms = rooms; this.liar = liar; this.projection = projection;
         this.blind = blind; this.blindProjection = blindProjection;
         this.mafia = mafia; this.mafiaProjection = mafiaProjection;
+        this.yut = yut; this.yutProjection = yutProjection;
+        this.events = events; this.clock = clock; this.disconnectGrace = disconnectGrace;
+    }
+    public GameApplication(RoomStore rooms, LiarGameService liar, LiarStateProjection projection,
+                           BlindGameService blind, BlindStateProjection blindProjection,
+                           MafiaGameService mafia, MafiaStateProjection mafiaProjection, RoomEvents events,
+                           Clock clock, Duration disconnectGrace) {
+        this.rooms = rooms; this.liar = liar; this.projection = projection;
+        this.blind = blind; this.blindProjection = blindProjection;
+        this.mafia = mafia; this.mafiaProjection = mafiaProjection;
+        this.yut = new YutGameService(new java.security.SecureRandom(), events);
+        this.yutProjection = new YutStateProjection(this.yut);
         this.events = events; this.clock = clock; this.disconnectGrace = disconnectGrace;
     }
     public GameApplication(RoomStore rooms, LiarGameService liar, LiarStateProjection projection,
@@ -45,6 +62,7 @@ public class GameApplication {
                            RoomEvents events, Clock clock, Duration disconnectGrace) {
         this.rooms=rooms; this.liar=liar; this.projection=projection; this.blind=blind; this.blindProjection=blindProjection;
         this.mafia=new MafiaGameService(new java.util.Random(0),events); this.mafiaProjection=new MafiaStateProjection(this.mafia);
+        this.yut = new YutGameService(new java.security.SecureRandom(), events); this.yutProjection = new YutStateProjection(this.yut);
         this.events=events; this.clock=clock; this.disconnectGrace=disconnectGrace;
     }
     public Responses.CreatedRoom create(String clientId, String nickname, String gender) {
@@ -102,14 +120,20 @@ public class GameApplication {
         return rooms.inRoom(roomId, r -> {
             r.requireHost(r.player(clientId));
             ACTIVE_GAME_SESSION_EXISTS.require(r.session == null || r.session.ended());
-            UNSUPPORTED_GAME_TYPE.require("LIAR".equals(type) || "BLIND".equals(type) || "MAFIA".equals(type));
+            UNSUPPORTED_GAME_TYPE.require("LIAR".equals(type) || "BLIND".equals(type) || "MAFIA".equals(type) || "YUT".equals(type));
             if ("BLIND".equals(type)) blind.requirePlayerCount(r);
             Object categoryValue = config == null ? null : config.get("categoryCode");
             String category = categoryValue instanceof String value ? value : null;
             INVALID_GAME_CONFIG.require("LIAR".equals(type)
                 ? config != null && config.size() == 1 && category != null && !category.isBlank()
+                : "YUT".equals(type) ? config != null && config.size() == 1 && config.containsKey("mode")
                 : config != null && config.isEmpty());
-            var runtime = "LIAR".equals(type) ? liar.prepare(category) : "BLIND".equals(type) ? blind.prepare() : mafia.prepare();
+            var runtime = switch (type) {
+                case "LIAR" -> liar.prepare(category);
+                case "BLIND" -> blind.prepare();
+                case "YUT" -> yut.prepare(config.get("mode"));
+                default -> mafia.prepare();
+            };
             r.session = new GameSessionRuntime(rooms.nextId(), type, runtime);
             events.game(r, "GAME_SESSION_CREATED", Map.of("gameType", type));
             return new Responses.Session(r.session.id, type, r.session.status.name());
@@ -118,14 +142,20 @@ public class GameApplication {
     public void start(long roomId, long sessionId, String clientId) {
         rooms.inRoom(roomId, r -> {
             r.requireHost(r.player(clientId)); session(r, sessionId);
-            if ("LIAR".equals(r.session.gameType)) liar.start(r); else if ("BLIND".equals(r.session.gameType)) blind.start(r); else mafia.start(r);
+            if ("LIAR".equals(r.session.gameType)) liar.start(r);
+            else if ("BLIND".equals(r.session.gameType)) blind.start(r);
+            else if ("YUT".equals(r.session.gameType)) yut.start(r);
+            else mafia.start(r);
             return null;
         });
     }
     public void cancel(long roomId, long sessionId, String clientId) {
         rooms.inRoom(roomId, r -> {
             r.requireHost(r.player(clientId)); session(r, sessionId);
-            if ("LIAR".equals(r.session.gameType)) liar.cancel(r, "HOST_CANCELLED"); else if ("BLIND".equals(r.session.gameType)) blind.cancel(r, "HOST_CANCELLED"); else mafia.cancel(r, "HOST_CANCELLED");
+            if ("LIAR".equals(r.session.gameType)) liar.cancel(r, "HOST_CANCELLED");
+            else if ("BLIND".equals(r.session.gameType)) blind.cancel(r, "HOST_CANCELLED");
+            else if ("YUT".equals(r.session.gameType)) yut.cancel(r, "HOST_CANCELLED");
+            else mafia.cancel(r, "HOST_CANCELLED");
             return null;
         });
     }
@@ -196,6 +226,7 @@ public class GameApplication {
     private Map<String, Object> project(RoomRuntime room, long requester) {
         return "LIAR".equals(room.session.gameType) ? projection.project(room.session, requester)
             : "BLIND".equals(room.session.gameType) ? blindProjection.project(room.session, requester)
+            : "YUT".equals(room.session.gameType) ? yutProjection.project(room, requester)
             : mafiaProjection.project(room, requester);
     }
     private static void requireClient(String id) { PLAYER_NOT_IN_ROOM.require(id != null && !id.isBlank()); }
