@@ -206,6 +206,28 @@ class HttpWebSocketIntegrationTest {
         app.leave(id, guest);
         assertThatThrownBy(() -> connect(id, guest, new Listener())).hasCauseInstanceOf(WebSocketHandshakeException.class);
     }
+
+    @Test void disconnectedHostDoesNotBlockRoomLookupOrNewPlayerJoin() throws Exception {
+        String host = client();
+        var created = body(request("POST", "/api/rooms", host, playerBody("방장")), 201);
+        long room = created.at("/room/roomId").asLong();
+        String roomCode = created.at("/room/roomCode").asText();
+        var hostSocket = connect(room, host, new Listener());
+
+        hostSocket.sendClose(WebSocket.NORMAL_CLOSURE, "host disconnected").get(5, TimeUnit.SECONDS);
+        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+            assertThat(app.state(room, host).me().connectionStatus()).isEqualTo("DISCONNECTED"));
+
+        var lookup = body(request("GET", "/api/rooms/by-code/" + roomCode, client(), null), 200);
+        assertThat(lookup.get("roomId").asLong()).isEqualTo(room);
+        assertThat(lookup.get("joinable").asBoolean()).isTrue();
+
+        String guest = client();
+        var joined = body(request("POST", "/api/rooms/" + room + "/players", guest, playerBody("손님")), 201);
+        assertThat(joined.get("nickname").asText()).isEqualTo("손님");
+        assertThat(app.state(room, guest).me().connectionStatus()).isEqualTo("CONNECTED");
+    }
+
     WebSocket connect(long room, String client, Listener listener) throws Exception {
         int count = rooms.inRoom(room, r -> r.players.values().stream().filter(p -> p.clientId.equals(client))
             .findFirst().map(p -> p.connections.size()).orElse(0));

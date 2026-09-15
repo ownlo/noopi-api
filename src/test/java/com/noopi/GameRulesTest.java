@@ -74,7 +74,7 @@ class GameRulesTest {
         }
     }
 
-    @Test void disconnectedHostMakesRoomInvisibleToNewPlayers() {
+    @Test void disconnectedHostStillAllowsLookupAndNewPlayers() {
         var created = app.create("host", "방장", "MALE");
         room = created.room().roomId();
         String code = created.room().roomCode();
@@ -82,9 +82,12 @@ class GameRulesTest {
 
         disconnect(hostId);
 
-        error(ROOM_NOT_FOUND, () -> app.lookup("guest", code));
-        error(ROOM_NOT_FOUND, () -> app.join(room, "guest", "참가자", "FEMALE"));
-        assertThat(store.<Integer>inRoom(room, r -> r.players.size())).isEqualTo(1);
+        var lookup = app.lookup("guest", code);
+        assertThat(lookup.roomId()).isEqualTo(room);
+        assertThat(lookup.joinable()).isTrue();
+        var joined = app.join(room, "guest", "참가자", "FEMALE");
+        assertThat(joined.nickname()).isEqualTo("참가자");
+        assertThat(store.<Integer>inRoom(room, r -> r.players.size())).isEqualTo(2);
     }
 
     @Test void readyStateRestoresSelectedCategoryForEveryRoomPlayer() {

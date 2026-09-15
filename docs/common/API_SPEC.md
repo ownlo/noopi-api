@@ -203,8 +203,9 @@ Response `200 OK`:
 이 API는 역할, 제시어, 투표 정보 등 게임의 비공개 정보를 반환하지
 않는다.
 
-현재 방장이 `DISCONNECTED` 상태이면 새로운 참가자에게 Room의 존재 여부를
-노출하지 않고 `ROOM_NOT_FOUND`를 반환한다.
+방장의 연결 상태는 Room 조회 가능 여부에 영향을 주지 않는다. 현재 방장이
+`DISCONNECTED` 상태여도 Room이 참가 가능한 상태라면 `joinable`은 `true`이며
+정상적으로 Room 정보를 반환한다.
 
 주요 오류:
 
@@ -255,9 +256,9 @@ Response `201 Created`:
 진행 중인 GameSession이 있는 Room에 새로 참가한 Player는 Room에는
 참가하지만 현재 GameSession 참가자에는 포함되지 않는다.
 
-Room 조회 이후 참가 요청 전에 방장이 `DISCONNECTED` 상태가 될 수 있으므로
-참가 요청에서도 방장의 연결 상태를 다시 검증한다. 기존 Player의 재접속이
-아닌 새로운 참가 요청이라면 `ROOM_NOT_FOUND`를 반환한다.
+방장의 연결 상태는 신규 참가 가능 여부에 영향을 주지 않는다. 현재 방장이
+`DISCONNECTED` 상태여도 Room이 참가 가능한 상태라면 새로운 Player의 참가
+요청을 정상적으로 처리한다.
 
 주요 오류:
 

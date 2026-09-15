@@ -40,7 +40,6 @@ public class GameApplication {
     public Responses.Lookup lookup(String clientId, String code) {
         requireClient(clientId);
         return rooms.inRoom(rooms.byCode(code), r -> {
-            requireConnectedHost(r);
             return new Responses.Lookup(r.id, r.code, r.status(), r.players.size(), true);
         });
     }
@@ -52,7 +51,6 @@ public class GameApplication {
                 reconnect(r, existing.get());
                 return player(r, existing.get());
             }
-            requireConnectedHost(r);
             var p = new PlayerRuntime(rooms.nextId(), clientId, nickname, gender);
             NICKNAME_ALREADY_EXISTS.require(r.players.values().stream().noneMatch(other -> other.nickname.equals(p.nickname)));
             r.players.put(p.id, p);
@@ -159,10 +157,6 @@ public class GameApplication {
             : blindProjection.project(session, requester);
     }
     private static void requireClient(String id) { PLAYER_NOT_IN_ROOM.require(id != null && !id.isBlank()); }
-    private static void requireConnectedHost(RoomRuntime room) {
-        var host = room.players.get(room.hostPlayerId);
-        ROOM_NOT_FOUND.require(host != null && host.connectionStatus == PlayerRuntime.ConnectionStatus.CONNECTED);
-    }
     private Responses.Player player(RoomRuntime r, PlayerRuntime p) {
         return new Responses.Player(p.id, p.nickname, p.gender.name(), r.hostPlayerId == p.id, p.connectionStatus.name());
     }
