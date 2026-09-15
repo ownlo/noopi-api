@@ -49,6 +49,9 @@ class HttpWebSocketIntegrationTest {
         assertThat(games.get(1).get("gameType").asText()).isEqualTo("BLIND");
         assertThat(games.get(1).get("minPlayers").asInt()).isEqualTo(2);
         assertThat(games.get(1).get("maxPlayers").asInt()).isEqualTo(2);
+        assertThat(games.get(2).get("gameType").asText()).isEqualTo("MAFIA");
+        assertThat(games.get(2).get("minPlayers").asInt()).isEqualTo(4);
+        assertThat(games.get(2).get("maxPlayers").asInt()).isEqualTo(12);
         String host = client();
         var created = body(request("POST", "/api/rooms", host, playerBody(" 방장 ")), 201);
         long room = created.at("/room/roomId").asLong();
@@ -62,7 +65,7 @@ class HttpWebSocketIntegrationTest {
         assertThat(request("GET", "/api/rooms/" + room + "/state", null, null).statusCode()).isEqualTo(403);
         assertThat(request("GET", "/api/games/liar/keywords", null, null).statusCode()).isEqualTo(404);
         assertThat(body(request("GET", "/actuator/health", null, null), 200).get("status").asText()).isEqualTo("UP");
-        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(17);
+        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(23);
     }
 
     @Test void fullBlindHttpFlowUsesPersonalizedStateAndServerWinner() throws Exception {

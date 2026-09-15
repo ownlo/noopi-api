@@ -32,7 +32,11 @@ public enum ErrorCode {
     GUESS_ALREADY_SUBMITTED(409, "이미 추측을 제출했습니다."),
     INVALID_ANSWER(400, "정답을 입력해주세요."),
     PLAYER_NOT_DISCONNECTED(409, "연결 중인 Player는 제외할 수 없습니다."),
-    PLAYER_NOT_EXCLUDABLE(422, "아직 제외할 수 없는 Player입니다.");
+    PLAYER_NOT_EXCLUDABLE(422, "아직 제외할 수 없는 Player입니다."),
+    PLAYER_DEAD(409, "사망한 Player는 행동할 수 없습니다."),
+    INVALID_NIGHT_ACTION(422, "현재 역할과 밤에 허용되지 않는 행동입니다."),
+    ACTION_ALREADY_SUBMITTED(409, "이미 이번 밤 행동을 제출했습니다."),
+    INVALID_ACTION_TARGET(422, "유효한 밤 행동 대상이 아닙니다.");
 
     public final int status;
     public final String message;
