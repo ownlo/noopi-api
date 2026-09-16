@@ -2245,6 +2245,14 @@ Room broadcast:
   "type": "YUT",
   "phase": "PLAYING",
   "mode": "TEAM",
+  "lastThrow": {
+    "sequence": 8,
+    "turnNo": 6,
+    "playerId": 12,
+    "result": "NAK",
+    "steps": 0,
+    "bonusThrowGranted": false
+  },
   "turn": {
     "turnNo": 7,
     "currentPlayerId": 13,
@@ -2286,6 +2294,11 @@ Room broadcast:
 따른다. 문자열 ID인 `pieceId`, `ownerId`, `moveTokenId`, `nodeId`, `pathId`는
 숫자형 Room/Player/GameSession ID와 구분한다. 개인전 `ownerId`는 Player ID의
 문자열 표현이며 팀전은 `NOOPI` 또는 `DAY`다.
+
+`lastThrow`는 GameSession 안에서 증가하는 `sequence`와 가장 최근 던지기의
+공개 결과를 제공한다. 낙으로 즉시 턴이 바뀌어 `turn.throwResults`가 비워진
+경우에도 유지되며 Client는 이를 이용해 던지기 결과 연출을 한 번만 재생한다.
+아직 던지기가 없으면 `null`이다.
 
 `myAction`은 현재 요청 Player가 행동할 수 없으면 `null`이며, 다음 중 하나다.
 
@@ -2342,6 +2355,17 @@ Request body는 없다. Response `200 OK`:
 }
 ```
 
+낙 Response:
+
+``` json
+{
+  "result": "NAK",
+  "steps": 0,
+  "moveTokenId": null,
+  "bonusThrowGranted": false
+}
+```
+
 서버가 현재 턴과 phase를 검증하고 윷가락 4개의 결과로 최종 결과를 정한다.
 
 길게 누르는 시간/파워는 Client 연출이며 Request에 포함하지 않는다.
@@ -2349,6 +2373,10 @@ Request body는 없다. Response `200 OK`:
 윷가락만 앞면이면 `BACK_DO`(-1), 특수 윷가락을 제외한 하나만 앞면이면
 `DO`(1), 앞면 수가 2/3/4이면 GAE/GEOL/YUT, 0이면 MO다. `BACK_DO`는
 추가 던지기를 주지 않는다.
+
+서버는 윷가락 조합 판정 전에 5% 확률로 `NAK`를 확정한다. 낙이면 이동권을
+생성하지 않고, 현재 보유한 이동권과 추가 던지기를 모두 버린 뒤 즉시 다음
+Player의 턴으로 전환한다. Client가 턴 넘김 요청을 별도로 보내지 않는다.
 
 `BACK_DO` 이동권을 선택하면 서버는 현재 소유자의 `ON_BOARD` 말/그룹만
 `eligiblePieceIds`로 제공한다. 판 위의 말이 없으면 해당 이동권은 소멸하고 서버가
@@ -2461,9 +2489,9 @@ ACTION_ALREADY_PROCESSED
   "gameSessionId": 55,
   "payload": {
     "playerId": 13,
-    "result": "YUT",
-    "steps": 4,
-    "bonusThrowGranted": true
+    "result": "NAK",
+    "steps": 0,
+    "bonusThrowGranted": false
   }
 }
 ```

@@ -13,7 +13,7 @@ public final class YutGameRuntime implements GameRuntime {
     public enum TurnPhase { WAITING_THROW, WAITING_MOVE, WAITING_PATH_SELECTION }
     public enum PieceStatus { READY, ON_BOARD, FINISHED }
     public enum Result {
-        BACK_DO(-1), DO(1), GAE(2), GEOL(3), YUT(4), MO(5);
+        NAK(0), BACK_DO(-1), DO(1), GAE(2), GEOL(3), YUT(4), MO(5);
         public final int steps;
         Result(int steps) { this.steps = steps; }
         public boolean bonus() { return this == YUT || this == MO; }
@@ -44,10 +44,15 @@ public final class YutGameRuntime implements GameRuntime {
     public final Set<String> usedTokens = new HashSet<>();
     public int pendingBonusThrows;
     public long nextToken;
+    public long throwSequence;
+    public LastThrow lastThrow;
     public String selectedToken;
     public String selectedPiece;
     public String winnerOwner;
     public String cancelReason;
+
+    public record LastThrow(long sequence, long turnNo, long playerId, Result result, int steps,
+                            boolean bonusThrowGranted) {}
 
     public YutGameRuntime(Mode mode) {
         this.mode = mode;

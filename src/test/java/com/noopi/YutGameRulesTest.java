@@ -41,7 +41,7 @@ class YutGameRulesTest {
         store = new RoomStore(new Random(1), Clock.systemUTC());
         room = store.create(new PlayerRuntime(1, "host", "방장", "MALE"));
         room.players.put(2L, new PlayerRuntime(2, "guest", "손님", "FEMALE"));
-        service = new YutGameService(dice, events); projection = new YutStateProjection(service);
+        service = YutGameService.withNakProbability(dice, events, 0); projection = new YutStateProjection(service);
         room.session = new GameSessionRuntime(100, "YUT", service.prepare("INDIVIDUAL"));
     }
     YutGameRuntime game() { return (YutGameRuntime) room.session.game; }
@@ -93,6 +93,29 @@ class YutGameRulesTest {
         var ordinaryDo = roll(1);
         assertThat(ordinaryDo.result()).isEqualTo(Result.DO);
         assertThat(ordinaryDo.steps()).isEqualTo(1);
+    }
+    @Test void nakDiscardsTheWholeTurnAndImmediatelyAdvances() {
+        service = YutGameService.withNakProbability(dice, events, 1);
+        projection = new YutStateProjection(service);
+        start();
+        long actor = current();
+        game().tokens.put("saved", new MoveToken("saved", Result.GAE, 2));
+        game().pendingBonusThrows = 2;
+
+        var nak = store.inRoom(room.id, r -> service.throwYut(r, actor));
+
+        assertThat(nak.result()).isEqualTo(Result.NAK);
+        assertThat(nak.steps()).isZero();
+        assertThat(nak.moveTokenId()).isNull();
+        assertThat(nak.bonusThrowGranted()).isFalse();
+        assertThat(game().currentPlayer()).isNotEqualTo(actor);
+        assertThat(game().turnNo).isEqualTo(2);
+        assertThat(game().tokens).isEmpty();
+        assertThat(game().pendingBonusThrows).isZero();
+        assertThat(game().turnPhase).isEqualTo(TurnPhase.WAITING_THROW);
+        assertThat(game().lastThrow.result()).isEqualTo(Result.NAK);
+        assertThat(events.types).endsWith("YUT_THROW_RESOLVED", "YUT_TURN_CHANGED");
+        assertThat(projection.project(room, actor).get("lastThrow")).isEqualTo(game().lastThrow);
     }
     @Test void backDoWrapsFromFirstNodeToStartAndAppliesStackAndCapture() {
         start();
