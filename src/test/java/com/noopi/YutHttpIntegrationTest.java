@@ -53,7 +53,7 @@ class YutHttpIntegrationTest {
     void throwUntilMove(String actor) throws Exception {
         for (int i = 0; i < 100 && state(actor).at("/myAction/type").asText().equals("THROW_YUT"); i++) {
             var result = value(request("POST", gamePath + "/yut/throws", actor, null), 200);
-            assertThat(result.get("steps").asInt()).isBetween(1, 5);
+            assertThat(result.get("steps").asInt()).isBetween(-1, 5).isNotZero();
             assertThat(result.get("moveTokenId").asText()).isNotBlank();
         }
         assertThat(state(actor).at("/myAction/type").asText()).isEqualTo("SELECT_MOVE_TOKEN");
