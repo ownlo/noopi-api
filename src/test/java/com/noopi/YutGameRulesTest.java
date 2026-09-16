@@ -94,7 +94,7 @@ class YutGameRulesTest {
         assertThat(ordinaryDo.result()).isEqualTo(Result.DO);
         assertThat(ordinaryDo.steps()).isEqualTo(1);
     }
-    @Test void nakDiscardsTheWholeTurnAndImmediatelyAdvances() {
+    @Test void nakInvalidatesOnlyThatThrowAndPreservesExistingMoveTokens() {
         service = YutGameService.withNakProbability(dice, events, 1);
         projection = new YutStateProjection(service);
         start();
@@ -108,14 +108,26 @@ class YutGameRulesTest {
         assertThat(nak.steps()).isZero();
         assertThat(nak.moveTokenId()).isNull();
         assertThat(nak.bonusThrowGranted()).isFalse();
+        assertThat(game().currentPlayer()).isEqualTo(actor);
+        assertThat(game().turnNo).isEqualTo(1);
+        assertThat(game().tokens).containsOnlyKeys("saved");
+        assertThat(game().pendingBonusThrows).isZero();
+        assertThat(game().turnPhase).isEqualTo(TurnPhase.WAITING_MOVE);
+        assertThat(game().lastThrow.result()).isEqualTo(Result.NAK);
+        assertThat(events.types).endsWith("YUT_TURN_CHANGED", "YUT_THROW_RESOLVED");
+        assertThat(projection.project(room, actor).get("lastThrow")).isEqualTo(game().lastThrow);
+    }
+    @Test void nakWithoutAnExistingMoveTokenImmediatelyAdvances() {
+        service = YutGameService.withNakProbability(dice, events, 1);
+        start();
+        long actor = current();
+
+        store.inRoom(room.id, r -> service.throwYut(r, actor));
+
         assertThat(game().currentPlayer()).isNotEqualTo(actor);
         assertThat(game().turnNo).isEqualTo(2);
-        assertThat(game().tokens).isEmpty();
-        assertThat(game().pendingBonusThrows).isZero();
         assertThat(game().turnPhase).isEqualTo(TurnPhase.WAITING_THROW);
-        assertThat(game().lastThrow.result()).isEqualTo(Result.NAK);
         assertThat(events.types).endsWith("YUT_THROW_RESOLVED", "YUT_TURN_CHANGED");
-        assertThat(projection.project(room, actor).get("lastThrow")).isEqualTo(game().lastThrow);
     }
     @Test void backDoWrapsFromFirstNodeToStartAndAppliesStackAndCapture() {
         start();

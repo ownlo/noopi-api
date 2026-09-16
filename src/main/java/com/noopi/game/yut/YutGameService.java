@@ -95,12 +95,13 @@ public class YutGameService {
         if (random.nextDouble() < nakProbability) {
             game.lastThrow = new LastThrow(++game.throwSequence, game.turnNo, player, Result.NAK, 0, false);
             events.game(room, "YUT_THROW_RESOLVED", Map.of("playerId", player, "result", Result.NAK.name(), "steps", 0, "bonusThrowGranted", false));
-            game.tokens.clear();
             game.pendingBonusThrows = 0;
             game.selectedToken = null;
             game.selectedPiece = null;
-            advanceTurn(room);
-            turnEvent(room);
+            if (game.tokens.isEmpty()) {
+                advanceTurn(room);
+                turnEvent(room);
+            } else game.turnPhase = TurnPhase.WAITING_MOVE;
             return new ThrowResult(Result.NAK, 0, null, false);
         }
         boolean[] faces = new boolean[4];

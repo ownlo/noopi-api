@@ -62,10 +62,28 @@ class YutHttpIntegrationTest {
         assertThat(state(actor).at("/myAction/type").asText()).isEqualTo("SELECT_MOVE_TOKEN");
         return actor;
     }
-    String selectFirstToken(String actor) throws Exception {
-        String token = state(actor).at("/myAction/moveTokenIds/0").asText();
+    record SelectedMove(String pieceId, int steps) {}
+    SelectedMove selectFirstToken(String actor) throws Exception {
+        var game = state(actor);
+        String token = null;
+        int steps = 0;
+        for (var candidate : game.at("/turn/moveTokens")) {
+            if (candidate.get("steps").asInt() > 0) {
+                token = candidate.get("moveTokenId").asText(); steps = candidate.get("steps").asInt(); break;
+            }
+        }
+        if (token == null) {
+            token = "http-positive-test";
+            steps = 2;
+            String stagedToken = token;
+            rooms.inRoom(room, r -> {
+                var runtime = (YutGameRuntime) r.session.game;
+                runtime.tokens.put(stagedToken, new YutGameRuntime.MoveToken(stagedToken, YutGameRuntime.Result.GAE, 2));
+                return null;
+            });
+        }
         value(request("POST", gamePath + "/yut/move-selections", actor, json.writeValueAsString(Map.of("moveTokenId", token))), 204);
-        return state(actor).at("/myAction/eligiblePieceIds/0").asText();
+        return new SelectedMove(state(actor).at("/myAction/eligiblePieceIds/0").asText(), steps);
     }
     @Test void actualHttpAndSocketFlowSupportsCaptureBonusShortcutsEmpty202AndFinish() throws Exception {
         setup(2, "INDIVIDUAL"); value(request("POST", gamePath + "/start", host, null), 204);
@@ -79,14 +97,15 @@ class YutHttpIntegrationTest {
             value(request("POST", gamePath + "/yut/throws", other, null), 403);
             actor = throwUntilMove(actor);
             final long movingActorId = state(actor).at("/turn/currentPlayerId").asLong();
-            int steps = state(actor).at("/turn/moveTokens/0/steps").asInt();
+            var selection = selectFirstToken(actor);
+            int steps = selection.steps();
             rooms.inRoom(room, r -> {
                 var g = (YutGameRuntime) r.session.game;
                 g.pieces.values().stream().filter(p -> !p.ownerId.equals(Long.toString(movingActorId))).limit(2).forEach(p -> {
                     p.status = YutGameRuntime.PieceStatus.ON_BOARD; p.nodeId = "OUTER_" + steps;
                 }); return null;
             });
-            String piece = selectFirstToken(actor);
+            String piece = selection.pieceId();
             var moved = value(request("POST", gamePath + "/yut/piece-selections", actor, json.writeValueAsString(Map.of("pieceId", piece))), 200);
             assertThat(moved.get("capturedPieceIds").size()).isEqualTo(2);
             assertThat(moved.get("bonusThrowGranted").asBoolean()).isTrue();
