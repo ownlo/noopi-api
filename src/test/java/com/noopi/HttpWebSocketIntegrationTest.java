@@ -39,6 +39,20 @@ class HttpWebSocketIntegrationTest {
     String playerBody(String nickname) { return "{\"nickname\":\"" + nickname + "\",\"gender\":\"MALE\"}"; }
     @AfterEach void closeSockets() { sockets.forEach(s -> s.sendClose(WebSocket.NORMAL_CLOSURE, "test done")); }
 
+    @Test void corsPreflightAllowsYutTeamSelectionPut() throws Exception {
+        var response = http.send(HttpRequest.newBuilder(URI.create(base() + "/api/rooms/1/game-sessions/1/yut/team"))
+            .header("Origin", "http://localhost:3000")
+            .header("Access-Control-Request-Method", "PUT")
+            .header("Access-Control-Request-Headers", "content-type,x-client-id")
+            .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+            .build(), HttpResponse.BodyHandlers.ofString());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).contains("http://localhost:3000");
+        assertThat(response.headers().firstValue("Access-Control-Allow-Methods")).hasValueSatisfying(methods ->
+            assertThat(methods).contains("PUT"));
+    }
+
     @Test void restContractsCatalogMigrationAndErrors() throws Exception {
         var categories = body(request("GET", "/api/games/liar/categories", null, null), 200).get("categories");
         assertThat(categories.get(0).get("code").asText()).isEqualTo("RANDOM");
