@@ -144,9 +144,10 @@ class YutGameRulesTest {
         assertThat(victim.status).isEqualTo(PieceStatus.READY);
         assertThat(result.bonusThrowGranted()).isTrue();
     }
-    @Test void backDoFromStartFinishesTheWholeGroupAndMovesThePlayerToSpectating() {
+    @Test void backDoFromStartFinishesTheWholeGroupAndEndsWhenOnlyOnePlayerRemains() {
         start();
         long actor = current();
+        long lastPlayer = room.session.participants().keySet().stream().filter(player -> player != actor).findFirst().orElseThrow();
         Piece first = own(1), second = own(2);
         place(first, "OUTER_20", YutBoard.OUTER); place(second, "OUTER_20", YutBoard.OUTER);
         first.group = second.group = List.of(first.id, second.id);
@@ -156,11 +157,10 @@ class YutGameRulesTest {
         assertThat(result.finished()).isTrue();
         assertThat(first.status).isEqualTo(PieceStatus.FINISHED);
         assertThat(second.status).isEqualTo(PieceStatus.FINISHED);
-        assertThat(room.session.status).isEqualTo(GameSessionRuntime.Status.PLAYING);
-        assertThat(game().finishOrder).containsExactly(actor);
-        assertThat(current()).isNotEqualTo(actor);
-        assertThat(projection.project(room, actor)).containsEntry("myRank", 1).containsEntry("myAction", null);
-        error(NOT_CURRENT_TURN, () -> service.throwYut(room, actor));
+        assertThat(room.session.status).isEqualTo(GameSessionRuntime.Status.FINISHED);
+        assertThat(game().finishOrder).containsExactly(actor, lastPlayer);
+        assertThat((List<?>) projection.project(room, actor).get("rankings")).hasSize(2);
+        error(GAME_SESSION_ALREADY_FINISHED, () -> service.throwYut(room, actor));
     }
     @Test void finishedPlayerIsRemovedWithoutChangingTheRemainingTurnOrder() {
         room.players.put(3L, new PlayerRuntime(3, "third", "세번째", "MALE"));
@@ -274,7 +274,8 @@ class YutGameRulesTest {
         assertThat(back.nodeId()).isEqualTo("CENTER_5");
         assertThat(back.route()).isEqualTo(YutBoard.A);
     }
-    @Test void individualGameContinuesUntilEveryPlayerFinishesAndReturnsRankings() {
+    @Test void individualGameEndsAndAssignsLastPlaceWhenOnlyOnePlayerRemains() {
+        room.players.put(3L, new PlayerRuntime(3, "third", "세번째", "MALE"));
         start(); long firstPlayer = current(); Piece first = own(1), second = own(2);
         place(first, "OUTER_19", YutBoard.OUTER); place(second, "OUTER_19", YutBoard.OUTER);
         first.group = second.group = List.of(first.id, second.id);
@@ -287,7 +288,8 @@ class YutGameRulesTest {
         assertThat(projection.project(room, firstPlayer)).containsEntry("myRank", 1).containsEntry("myAction", null);
         assertThat(events.types.stream().filter("GAME_FINISHED"::equals).count()).isZero();
 
-        long lastPlayer = current();
+        long secondPlayer = current();
+        long lastPlayer = room.session.participants().keySet().stream().filter(player -> player != firstPlayer && player != secondPlayer).findFirst().orElseThrow();
         Piece last = own(1);
         place(last, "OUTER_20", YutBoard.OUTER);
         own(2).status = own(3).status = own(4).status = PieceStatus.FINISHED;
@@ -297,8 +299,8 @@ class YutGameRulesTest {
         assertThat(move(last).finished()).isTrue();
 
         assertThat(room.session.status).isEqualTo(GameSessionRuntime.Status.FINISHED);
-        assertThat(game().finishOrder).containsExactly(firstPlayer, lastPlayer);
-        assertThat((List<?>) projection.project(room, firstPlayer).get("rankings")).hasSize(2);
+        assertThat(game().finishOrder).containsExactly(firstPlayer, secondPlayer, lastPlayer);
+        assertThat((List<?>) projection.project(room, firstPlayer).get("rankings")).hasSize(3);
         assertThat(projection.project(room, firstPlayer)).doesNotContainKeys("winnerPlayer", "winnerTeam");
         assertThat(events.types.stream().filter("GAME_FINISHED"::equals).count()).isEqualTo(1);
         error(GAME_SESSION_ALREADY_FINISHED, () -> service.throwYut(room, firstPlayer));
@@ -364,7 +366,11 @@ class YutGameRulesTest {
             assertThat(game().phase).as("game %s must complete", run).isEqualTo(Phase.FINISHED);
             if (run % 2 == 0) {
                 assertThat(game().finishOrder).hasSize(room.session.participants().size());
-                assertThat(game().pieces.values()).allMatch(p -> p.status == PieceStatus.FINISHED);
+                long lastPlayer = game().finishOrder.getLast();
+                assertThat(game().pieces.values().stream().filter(p -> !p.ownerId.equals(Long.toString(lastPlayer))))
+                    .allMatch(p -> p.status == PieceStatus.FINISHED);
+                assertThat(game().pieces.values().stream().filter(p -> p.ownerId.equals(Long.toString(lastPlayer))))
+                    .anyMatch(p -> p.status != PieceStatus.FINISHED);
                 assertThat((List<?>) projection.project(room, 1).get("rankings")).hasSize(room.session.participants().size());
                 assertThat(projection.project(room, 1)).doesNotContainKeys("winnerPlayer", "winnerTeam");
             } else {

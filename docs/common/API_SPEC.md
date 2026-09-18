@@ -2370,7 +2370,8 @@ SELECT_PATH
 전체 말이나 보드 그래프로 후보를 다시 계산하지 않는다.
 
 개인전의 `rankings`는 지금까지 말 4개를 모두 완주하여 순위가 확정된 Player를
-`rank` 오름차순으로 제공한다. 현재 요청 Player의 순위가 확정되면 `myRank`에
+`rank` 오름차순으로 제공한다. 단, 한 명만 남은 순간에는 그 Player를 마지막
+순위로 자동 확정하고 종료 응답의 `rankings`에 포함한다. 현재 요청 Player의 순위가 확정되면 `myRank`에
 그 순위를 제공하고 `myAction`은 `null`로 반환한다. 해당 Player는 관전 UI를
 표시한다. 서버는 순위가 확정된 Player를 이후 턴에서 제외한다. Frontend는
 `finishedPieceCounts`로 순위나 관전 여부를 계산하지 않는다. 팀전에서는
@@ -2546,8 +2547,9 @@ ACTION_ALREADY_PROCESSED
 
 개인전에서 한 Player의 네 번째 말 이동이 확정되면 서버는 해당 Player의
 다음 순위를 확정하고 남은 이동권과 추가 던지기를 소멸시킨다. 해당 Player를
-턴 순서에서 제외한 뒤 남은 Player에게 턴을 넘긴다. 마지막 Player까지
-완주하면 GameSession을 `FINISHED`로 변경하고 전체 순위를 반환한다. 팀전은
+턴 순서에서 제외한 뒤 남은 Player가 두 명 이상이면 다음 Player에게 턴을 넘긴다.
+순위 미확정 Player가 한 명만 남으면 그 Player를 마지막 순위로 자동 확정하고
+GameSession을 `FINISHED`로 변경하여 전체 순위를 반환한다. 팀전은
 기존과 같이 한 팀의 말 4개가 완주하는 즉시 종료한다.
 
 ## 윷놀이 WebSocket 이벤트

@@ -86,7 +86,7 @@ class YutHttpIntegrationTest {
         return new SelectedMove(state(actor).at("/myAction/eligiblePieceIds/0").asText(), steps);
     }
     @Test void actualHttpAndSocketFlowSupportsCaptureBonusShortcutsEmpty202AndFinish() throws Exception {
-        setup(2, "INDIVIDUAL"); value(request("POST", gamePath + "/start", host, null), 204);
+        setup(3, "INDIVIDUAL"); value(request("POST", gamePath + "/start", host, null), 204);
         String actor = actor();
         var listener = new HttpWebSocketIntegrationTest.Listener();
         var socket = http.newWebSocketBuilder().buildAsync(URI.create("ws://localhost:" + port + "/ws?roomId=" + room + "&clientId=" + actor), listener).get(5, TimeUnit.SECONDS);
@@ -142,6 +142,7 @@ class YutHttpIntegrationTest {
 
             String lastActor = actor();
             long lastActorId = state(lastActor).at("/turn/currentPlayerId").asLong();
+            long inferredLastActorId = clients.keySet().stream().filter(playerId -> playerId != movingActorId && playerId != lastActorId).findFirst().orElseThrow();
             String[] lastPiece = new String[1];
             rooms.inRoom(room, r -> {
                 var g = (YutGameRuntime) r.session.game;
@@ -161,9 +162,10 @@ class YutHttpIntegrationTest {
             assertThat(value(request("POST", gamePath + "/yut/piece-selections", lastActor, json.writeValueAsString(Map.of("pieceId", lastPiece[0]))), 200).get("finished").asBoolean()).isTrue();
             var finished = state(actor);
             assertThat(finished.at("/phase").asText()).isEqualTo("FINISHED");
-            assertThat(finished.at("/rankings").size()).isEqualTo(2);
+            assertThat(finished.at("/rankings").size()).isEqualTo(3);
             assertThat(finished.at("/rankings/0/playerId").asLong()).isEqualTo(movingActorId);
             assertThat(finished.at("/rankings/1/playerId").asLong()).isEqualTo(lastActorId);
+            assertThat(finished.at("/rankings/2/playerId").asLong()).isEqualTo(inferredLastActorId);
             assertThat(finished.has("winnerPlayer")).isFalse();
             listener.awaitType("GAME_FINISHED");
             assertThat(String.join("\n", listener.received)).doesNotContain("eligiblePieceIds", "eligiblePathIds");

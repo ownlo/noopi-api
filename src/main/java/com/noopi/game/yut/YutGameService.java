@@ -222,7 +222,11 @@ public class YutGameService {
             game.selectedToken = null;
             game.selectedPiece = null;
             game.throwResults.clear();
-            if (game.finishOrder.size() == room.session.participants().size()) {
+            if (game.finishOrder.size() >= room.session.participants().size() - 1) {
+                room.session.participants().keySet().stream()
+                    .filter(participant -> !game.finishOrder.contains(participant))
+                    .findFirst()
+                    .ifPresent(game.finishOrder::add);
                 game.phase = Phase.FINISHED;
                 room.session.status = GameSessionRuntime.Status.FINISHED;
                 gameFinished = true;
