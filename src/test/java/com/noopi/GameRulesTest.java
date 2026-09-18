@@ -331,6 +331,21 @@ class GameRulesTest {
         assertThat(state(ids.getFirst()).get("roleCheckedCount")).isEqualTo(0);
         error(GAME_SESSION_NOT_FOUND, () -> app.roleCheck(room, old, "c0"));
     }
+    @Test void hostReturnsEveryoneToLobbyAndClearsCurrentSession() {
+        start(4);
+        error(NOT_ROOM_HOST, () -> app.returnToLobby(room, "c1"));
+
+        app.returnToLobby(room, "c0");
+
+        var state = app.state(room, "c1");
+        assertThat(state.room().status()).isEqualTo("WAITING");
+        assertThat(state.gameSession()).isNull();
+        assertThat(state.players()).hasSize(4);
+        assertThat(events.count("GAME_CANCELLED")).isEqualTo(1);
+        assertThat(events.count("ROOM_RETURNED_TO_LOBBY")).isEqualTo(1);
+        session = app.createSession(room, "c0", "LIAR", "RANDOM").gameSessionId();
+        assertThat(session).isPositive();
+    }
     @SuppressWarnings("unchecked")
     @Test void roleCheckStatusesIdentifyEachPlayer() {
         start(4);

@@ -83,6 +83,10 @@ Room은 참가자들이 모여 있는 공간이다. 하나의 Room에서 여러 
 Room에는 사람이 직접 입력할 수 있는 짧은 Room Code를 제공하며 QR을
 이용한 참가도 지원한다.
 
+방장은 Room을 유지한 채 모든 참가자를 공통 대기 로비로 이동시킬 수 있다.
+진행 중인 GameSession이 있으면 서버가 취소하고 현재 GameSession을 비운 뒤
+전체 참가자에게 로비 이동을 알린다.
+
 ## 6. Player
 
 Client가 Room에 참가하면 해당 Room의 Player가 된다.

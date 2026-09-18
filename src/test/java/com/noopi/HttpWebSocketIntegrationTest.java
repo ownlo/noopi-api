@@ -65,7 +65,38 @@ class HttpWebSocketIntegrationTest {
         assertThat(request("GET", "/api/rooms/" + room + "/state", null, null).statusCode()).isEqualTo(403);
         assertThat(request("GET", "/api/games/liar/keywords", null, null).statusCode()).isEqualTo(404);
         assertThat(body(request("GET", "/actuator/health", null, null), 200).get("status").asText()).isEqualTo("UP");
-        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(28);
+        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(29);
+    }
+
+    @Test void hostCanReturnEveryPlayerToLobby() throws Exception {
+        String host = client();
+        var created = body(request("POST", "/api/rooms", host, playerBody("방장")), 201);
+        long room = created.at("/room/roomId").asLong();
+        String guest = client();
+        body(request("POST", "/api/rooms/" + room + "/players", guest, playerBody("손님")), 201);
+        String other = client();
+        body(request("POST", "/api/rooms/" + room + "/players", other, playerBody("친구")), 201);
+        var listener = new Listener(); connect(room, guest, listener);
+        String roomPath = "/api/rooms/" + room;
+        long session = body(request("POST", roomPath + "/game-sessions", host,
+            "{\"gameType\":\"LIAR\",\"config\":{\"categoryCode\":\"RANDOM\"}}"), 201)
+            .get("gameSessionId").asLong();
+        assertThat(request("POST", roomPath + "/game-sessions/" + session + "/start", host, null).statusCode()).isEqualTo(204);
+
+        assertThat(body(request("POST", roomPath + "/lobby", guest, null), 403).get("code").asText())
+            .isEqualTo("NOT_ROOM_HOST");
+        assertThat(request("POST", roomPath + "/lobby", host, null).statusCode()).isEqualTo(204);
+
+        listener.awaitType("ROOM_RETURNED_TO_LOBBY");
+        var state = body(request("GET", roomPath + "/state", guest, null), 200);
+        assertThat(state.at("/room/status").asText()).isEqualTo("WAITING");
+        assertThat(state.get("gameSession").isNull()).isTrue();
+        var event = listener.received.stream().map(message -> {
+            try { return json.readTree(message); }
+            catch (Exception exception) { throw new RuntimeException(exception); }
+        }).filter(message -> message.get("type").asText().equals("ROOM_RETURNED_TO_LOBBY")).findFirst().orElseThrow();
+        assertThat(event.get("gameSessionId").isNull()).isTrue();
+        assertThat(event.get("payload").isEmpty()).isTrue();
     }
 
     @Test void fullBlindHttpFlowUsesPersonalizedStateAndServerWinner() throws Exception {

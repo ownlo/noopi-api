@@ -72,6 +72,11 @@ GameSession이 종료되어도 Room과 Player는 유지한다.
 취소된 GameSession을 재사용하지 않는다. 다시 시작하려면 새로운
 GameSession을 생성한다.
 
+방장이 전체 참가자를 Room 대기 로비로 이동시키면 진행 중인 GameSession은
+`CANCELLED`로 종료하고 Room의 현재 GameSession에서 제거한다. 이미 종료된
+GameSession이 있으면 그대로 현재 GameSession에서 제거한다. Room과 Player는
+유지한다.
+
 ## 10. 같은 게임 다시하기
 
 새로운 GameSession을 생성한다.

@@ -152,10 +152,18 @@ public class GameApplication {
     public void cancel(long roomId, long sessionId, String clientId) {
         rooms.inRoom(roomId, r -> {
             r.requireHost(r.player(clientId)); session(r, sessionId);
-            if ("LIAR".equals(r.session.gameType)) liar.cancel(r, "HOST_CANCELLED");
-            else if ("BLIND".equals(r.session.gameType)) blind.cancel(r, "HOST_CANCELLED");
-            else if ("YUT".equals(r.session.gameType)) yut.cancel(r, "HOST_CANCELLED");
-            else mafia.cancel(r, "HOST_CANCELLED");
+            cancelCurrentSession(r, "HOST_CANCELLED");
+            return null;
+        });
+    }
+    public void returnToLobby(long roomId, String clientId) {
+        rooms.inRoom(roomId, r -> {
+            r.requireHost(r.player(clientId));
+            if (r.session != null) {
+                if (!r.session.ended()) cancelCurrentSession(r, "HOST_RETURNED_TO_LOBBY");
+                rooms.clearSession(r);
+            }
+            events.publish(r, "ROOM_RETURNED_TO_LOBBY", null, Map.of());
             return null;
         });
     }
@@ -222,6 +230,12 @@ public class GameApplication {
     }
     private void requireType(RoomRuntime room, String type) {
         INVALID_GAME_PHASE.require(type.equals(room.session.gameType));
+    }
+    private void cancelCurrentSession(RoomRuntime room, String reason) {
+        if ("LIAR".equals(room.session.gameType)) liar.cancel(room, reason);
+        else if ("BLIND".equals(room.session.gameType)) blind.cancel(room, reason);
+        else if ("YUT".equals(room.session.gameType)) yut.cancel(room, reason);
+        else mafia.cancel(room, reason);
     }
     private Map<String, Object> project(RoomRuntime room, long requester) {
         return "LIAR".equals(room.session.gameType) ? projection.project(room.session, requester)

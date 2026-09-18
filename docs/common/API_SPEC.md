@@ -306,6 +306,44 @@ PLAYER_NOT_IN_ROOM
 
 ------------------------------------------------------------------------
 
+## 8.1 Room 대기 로비로 이동
+
+방장이 Room을 유지한 채 모든 참가자를 공통 대기 로비로 이동시킬 때
+사용한다.
+
+``` http
+POST /api/rooms/{roomId}/lobby
+```
+
+Header:
+
+``` text
+X-Client-Id: <clientId>
+```
+
+Response:
+
+``` text
+204 No Content
+```
+
+진행 중인 GameSession이 있으면 서버는 `HOST_RETURNED_TO_LOBBY` 사유로
+취소한 뒤 현재 GameSession을 제거한다. 이미 종료된 GameSession이 있으면
+현재 GameSession에서 제거한다. Room과 Player는 유지하며 이후 `/state`는
+`gameSession: null`, Room `status: WAITING`을 반환한다.
+
+서버는 전체 참가자에게 `ROOM_RETURNED_TO_LOBBY` 이벤트를 전송한다.
+
+주요 오류:
+
+``` text
+ROOM_NOT_FOUND
+PLAYER_NOT_IN_ROOM
+NOT_ROOM_HOST
+```
+
+------------------------------------------------------------------------
+
 # State API
 
 ## 9. 현재 Room/Game 상태 조회
@@ -1854,6 +1892,21 @@ WebSocket은 상태 저장소가 아니다. 연결 직후 또는 재접속 후�
 
 수신한 Client는 저장된 마지막 Room 정보를 제거하고 홈 화면으로 이동한다.
 
+### ROOM_RETURNED_TO_LOBBY
+
+방장이 Room의 모든 참가자를 대기 로비로 이동시켰을 때 전달한다.
+
+``` json
+{
+  "type": "ROOM_RETURNED_TO_LOBBY",
+  "gameSessionId": null,
+  "payload": {}
+}
+```
+
+수신한 Client는 `GET /state`를 다시 조회하고 Room 대기 로비를 표시한다.
+화면에는 방장이 모두를 대기실로 이동했다는 안내를 표시할 수 있다.
+
 ------------------------------------------------------------------------
 
 ## 27. GameSession 이벤트
@@ -2245,14 +2298,23 @@ Room broadcast:
   "type": "YUT",
   "phase": "PLAYING",
   "mode": "TEAM",
+  "lastThrow": {
+    "sequence": 8,
+    "turnNo": 6,
+    "playerId": 12,
+    "result": "NAK",
+    "steps": 0,
+    "bonusThrowGranted": false
+  },
   "turn": {
     "turnNo": 7,
     "currentPlayerId": 13,
     "turnPhase": "WAITING_MOVE",
-    "throwResults": ["YUT", "GAE"],
+    "throwResults": ["YUT", "BACK_DO", "GAE"],
     "moveTokens": [
       { "moveTokenId": "mt-31", "result": "YUT", "steps": 4 },
-      { "moveTokenId": "mt-32", "result": "GAE", "steps": 2 }
+      { "moveTokenId": "mt-32", "result": "BACK_DO", "steps": -1 },
+      { "moveTokenId": "mt-33", "result": "GAE", "steps": 2 }
     ],
     "pendingBonusThrows": 0
   },
@@ -2285,6 +2347,11 @@ Room broadcast:
 따른다. 문자열 ID인 `pieceId`, `ownerId`, `moveTokenId`, `nodeId`, `pathId`는
 숫자형 Room/Player/GameSession ID와 구분한다. 개인전 `ownerId`는 Player ID의
 문자열 표현이며 팀전은 `NOOPI` 또는 `DAY`다.
+
+`lastThrow`는 GameSession 안에서 증가하는 `sequence`와 가장 최근 던지기의
+공개 결과를 제공한다. 낙으로 이동권이 생성되지 않거나 턴이 바뀐 경우에도
+유지되며 Client는 이를 이용해 던지기 결과 연출을 한 번만 재생한다.
+아직 던지기가 없으면 `null`이다.
 
 `myAction`은 현재 요청 Player가 행동할 수 없으면 `null`이며, 다음 중 하나다.
 
@@ -2341,11 +2408,38 @@ Request body는 없다. Response `200 OK`:
 }
 ```
 
+낙 Response:
+
+``` json
+{
+  "result": "NAK",
+  "steps": 0,
+  "moveTokenId": null,
+  "bonusThrowGranted": false
+}
+```
+
 서버가 현재 턴과 phase를 검증하고 윷가락 4개의 결과로 최종 결과를 정한다.
 
 길게 누르는 시간/파워는 Client 연출이며 Request에 포함하지 않는다.
-서버는 각 윷가락의 앞뒤를 독립적으로 결정한다. 앞면 수가 1/2/3/4이면
-DO/GAE/GEOL/YUT, 0이면 MO다.
+서버는 각 윷가락의 앞뒤를 독립적으로 결정한다. 누피 캐릭터가 표시된 특수
+윷가락만 앞면이면 `BACK_DO`(-1), 특수 윷가락을 제외한 하나만 앞면이면
+`DO`(1), 앞면 수가 2/3/4이면 GAE/GEOL/YUT, 0이면 MO다. `BACK_DO`는
+추가 던지기를 주지 않는다.
+
+서버는 윷가락 조합 판정 전에 5% 확률로 `NAK`를 확정한다. 낙이면 해당
+던지기의 이동권을 생성하지 않고 추가 던지기를 종료한다. 현재 보유한 기존
+이동권은 유지하며 `/state`를 `SELECT_MOVE_TOKEN`으로 전환한다. 기존 이동권이
+없을 때만 다음 Player의 턴으로 전환한다. 기존 이동권이 정확히 하나라면 Client는
+그 이동권 선택 요청을 자동으로 보내 `SELECT_PIECE` 단계로 진행한다. Client가 턴
+넘김 요청을 별도로 보내지는 않는다.
+
+`BACK_DO` 이동권을 선택하면 서버는 현재 소유자의 `ON_BOARD` 말/그룹만
+`eligiblePieceIds`로 제공한다. 판 위의 말이 없으면 해당 이동권은 소멸하고 서버가
+다음 이동권 또는 턴으로 전환한다. 경로와 도착점은 서버가 해당 말의 진입 경로를
+기준으로 판정하며 Frontend가 역경로를 계산하지 않는다. `OUTER_1`에서는 출발칸인
+`OUTER_20`으로 이동하고, `OUTER_20`에서는 `FINISHED`가 된다. `OUTER_20`에
+도착한 경우에도 같은 소유자 말은 업고 상대 말은 잡는다.
 
 중복 요청은 Room 단위 잠금과 현재 행동 단계 검증으로 보호한다. 이 body
 없는 계약만으로는 같은 Player의 연속 추가 던지기와 이전 요청의 지연 재전송을
@@ -2451,9 +2545,9 @@ ACTION_ALREADY_PROCESSED
   "gameSessionId": 55,
   "payload": {
     "playerId": 13,
-    "result": "YUT",
-    "steps": 4,
-    "bonusThrowGranted": true
+    "result": "NAK",
+    "steps": 0,
+    "bonusThrowGranted": false
   }
 }
 ```
@@ -2703,6 +2797,9 @@ Frontend는 다음 규칙을 따른다.
   `POST`        `/api/rooms/{roomId}/players`                                                    Room 참가
 
   `DELETE`      `/api/rooms/{roomId}/players/me`                                                 Room 나가기
+
+  `POST`        `/api/rooms/{roomId}/lobby`                                                      전체 참가자를
+                                                                                                 대기 로비로 이동
 
   `GET`         `/api/rooms/{roomId}/state`                                                      현재 전체
                                                                                                  상태 복구

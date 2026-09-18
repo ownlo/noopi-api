@@ -64,6 +64,11 @@ public class RoomStore {
         return id;
     }
     public Collection<RoomRuntime> snapshot() { return List.copyOf(rooms.values()); }
+    /** Caller holds the room monitor. Observe an ended session before detaching it from the Room. */
+    public void clearSession(RoomRuntime room) {
+        metrics.observe(room);
+        room.session = null;
+    }
     public void remove(RoomRuntime room) {
         synchronized (room) {
             if (room.closed) return;

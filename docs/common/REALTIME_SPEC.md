@@ -62,6 +62,7 @@ Player를 연결 종료 상태로 변경하고 일정 시간 동안 재접속을
 -   `PLAYER_LEFT`
 -   `HOST_CHANGED`
 -   `ROOM_CLOSED`
+-   `ROOM_RETURNED_TO_LOBBY`
 -   `GAME_SESSION_CREATED`
 -   `GAME_STARTED`
 -   `GAME_FINISHED`
@@ -129,6 +130,10 @@ Player의 역할과 게임 종료 후 전체 역할은 공개 정보로 전환�
 이 이벤트에는 서버가 확정한 공개 결과만 포함한다. 행동 가능 여부와 이동
 가능한 말·경로 후보는 개인화된 `/state`로 조회한다. Client는 이벤트
 payload만으로 말 위치, 업기, 잡기, 완주 또는 승자를 계산하지 않는다.
+`YUT_THROW_RESOLVED`의 `NAK`는 해당 던지기에 이동권이 생성되지 않은 공개 결과다.
+Client는 `/state`의 `lastThrow`와 기존 이동권 또는 새 턴을 다시 조회해 낙 연출과
+화면을 동기화한다. 기존 이동권이 정확히 하나라면 해당 이동권을 자동 선택하고
+말 선택 단계로 진행한다.
 
 밤 행동 이벤트에는 행동 타입, 대상, 경찰 조사 결과, 치료 성공 여부를
 broadcast하지 않는다. 상태 변경을 알리는 데 필요한 Player와 완료 인원만
