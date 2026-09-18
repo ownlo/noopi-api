@@ -20,7 +20,7 @@ public class WebConfig implements WebSocketConfigurer, WebMvcConfigurer {
         registry.addHandler(handler, "/ws").addInterceptors(handshake).setAllowedOrigins(origins);
     }
     @Override public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**").allowedOrigins(origins).allowedMethods("GET", "POST", "DELETE")
+        registry.addMapping("/api/**").allowedOrigins(origins).allowedMethods("GET", "POST", "PUT", "DELETE")
             .allowedHeaders("Content-Type", "X-Client-Id");
     }
 }

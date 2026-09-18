@@ -23,6 +23,7 @@ public class YutStateProjection {
             state.put("canStart", requester == room.hostPlayerId && service.teamsReady(room));
         }
         if (game.phase == Phase.PLAYING) {
+            state.put("lastThrow", game.lastThrow);
             state.put("turn", Map.of("turnNo", game.turnNo, "currentPlayerId", game.currentPlayer(), "turnPhase", game.turnPhase.name(),
                 "throwResults", List.copyOf(game.throwResults), "moveTokens", List.copyOf(game.tokens.values()), "pendingBonusThrows", game.pendingBonusThrows));
             state.put("pieces", game.pieces.values().stream().map(piece -> {

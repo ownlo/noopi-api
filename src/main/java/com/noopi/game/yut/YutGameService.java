@@ -6,6 +6,7 @@ import com.noopi.realtime.RoomEvents;
 import com.noopi.room.*;
 import java.util.*;
 import java.util.random.RandomGenerator;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import static com.noopi.api.ErrorCode.*;
 import static com.noopi.game.yut.YutGameRuntime.*;
@@ -13,9 +14,18 @@ import static com.noopi.game.yut.YutGameRuntime.*;
 /** Every method is called inside RoomStore.inRoom's atomic boundary. */
 @Service
 public class YutGameService {
+    static final double NAK_PROBABILITY = 0.05;
     private final RandomGenerator random;
     private final RoomEvents events;
-    public YutGameService(RandomGenerator random, RoomEvents events) { this.random = random; this.events = events; }
+    private final double nakProbability;
+    @Autowired
+    public YutGameService(RandomGenerator random, RoomEvents events) { this(random, events, NAK_PROBABILITY); }
+    private YutGameService(RandomGenerator random, RoomEvents events, double nakProbability) {
+        this.random = random; this.events = events; this.nakProbability = nakProbability;
+    }
+    public static YutGameService withNakProbability(RandomGenerator random, RoomEvents events, double nakProbability) {
+        return new YutGameService(random, events, nakProbability);
+    }
     public YutGameRuntime prepare(Object mode) {
         INVALID_GAME_CONFIG.require("INDIVIDUAL".equals(mode) || "TEAM".equals(mode));
         return new YutGameRuntime(Mode.valueOf((String) mode));
@@ -82,21 +92,48 @@ public class YutGameService {
     public ThrowResult throwYut(RoomRuntime room, long player) {
         var game = requireTurn(room, player);
         INVALID_TURN_PHASE.require(game.turnPhase == TurnPhase.WAITING_THROW && game.selectedToken == null);
+        if (random.nextDouble() < nakProbability) {
+            game.lastThrow = new LastThrow(++game.throwSequence, game.turnNo, player, Result.NAK, 0, false);
+            events.game(room, "YUT_THROW_RESOLVED", Map.of("playerId", player, "result", Result.NAK.name(), "steps", 0, "bonusThrowGranted", false));
+            game.pendingBonusThrows = 0;
+            game.selectedToken = null;
+            game.selectedPiece = null;
+            if (game.tokens.isEmpty()) {
+                advanceTurn(room);
+                turnEvent(room);
+            } else game.turnPhase = TurnPhase.WAITING_MOVE;
+            return new ThrowResult(Result.NAK, 0, null, false);
+        }
+        boolean[] faces = new boolean[4];
         int fronts = 0;
-        for (int i = 0; i < 4; i++) if (random.nextBoolean()) fronts++;
-        Result result = switch (fronts) { case 0 -> Result.MO; case 1 -> Result.DO; case 2 -> Result.GAE; case 3 -> Result.GEOL; default -> Result.YUT; };
+        for (int i = 0; i < faces.length; i++) {
+            faces[i] = random.nextBoolean();
+            if (faces[i]) fronts++;
+        }
+        Result result = switch (fronts) {
+            case 0 -> Result.MO;
+            case 1 -> faces[0] ? Result.BACK_DO : Result.DO;
+            case 2 -> Result.GAE;
+            case 3 -> Result.GEOL;
+            default -> Result.YUT;
+        };
         if (game.pendingBonusThrows > 0) game.pendingBonusThrows--;
         if (result.bonus()) game.pendingBonusThrows++;
         var token = new MoveToken("mt-" + room.session.id + "-" + (++game.nextToken), result, result.steps);
         game.tokens.put(token.moveTokenId(), token);
         game.throwResults.add(result);
+        game.lastThrow = new LastThrow(++game.throwSequence, game.turnNo, player, result, result.steps, result.bonus());
         game.turnPhase = game.pendingBonusThrows > 0 ? TurnPhase.WAITING_THROW : TurnPhase.WAITING_MOVE;
         events.game(room, "YUT_THROW_RESOLVED", Map.of("playerId", player, "result", result.name(), "steps", result.steps, "bonusThrowGranted", result.bonus()));
         return new ThrowResult(result, result.steps, token.moveTokenId(), result.bonus());
     }
     public List<String> eligiblePieces(YutGameRuntime game) {
         String owner = game.owner(game.currentPlayer());
-        return game.pieces.values().stream().filter(p -> p.ownerId.equals(owner) && p.status != PieceStatus.FINISHED && p.id.equals(p.group.getFirst()))
+        MoveToken selected = game.selectedToken == null ? null : game.tokens.get(game.selectedToken);
+        boolean backDo = selected != null && selected.result() == Result.BACK_DO;
+        return game.pieces.values().stream().filter(p -> p.ownerId.equals(owner)
+                && (backDo ? p.status == PieceStatus.ON_BOARD : p.status != PieceStatus.FINISHED)
+                && p.id.equals(p.group.getFirst()))
             .map(p -> p.id).toList();
     }
     public void selectToken(RoomRuntime room, long player, String tokenId) {
@@ -106,12 +143,20 @@ public class YutGameService {
         INVALID_TURN_PHASE.require(game.turnPhase == TurnPhase.WAITING_MOVE);
         ACTION_ALREADY_PROCESSED.require(game.selectedToken == null);
         game.selectedToken = tokenId;
+        if (game.tokens.get(tokenId).result() == Result.BACK_DO && eligiblePieces(game).isEmpty()) {
+            consumeSelectedToken(room);
+        }
     }
     public MoveResult selectPiece(RoomRuntime room, long player, String pieceId) {
         var game = requireTurn(room, player);
         INVALID_TURN_PHASE.require(game.turnPhase == TurnPhase.WAITING_MOVE && game.selectedToken != null);
         PIECE_NOT_ELIGIBLE.require(eligiblePieces(game).contains(pieceId));
         var piece = game.pieces.get(pieceId);
+        var token = game.tokens.get(game.selectedToken);
+        if (token.result() == Result.BACK_DO) {
+            game.selectedPiece = pieceId;
+            return move(room, player, piece.route);
+        }
         var paths = YutBoard.paths(piece);
         game.selectedPiece = pieceId;
         if (paths.size() > 1) { game.turnPhase = TurnPhase.WAITING_PATH_SELECTION; return null; }
@@ -140,7 +185,8 @@ public class YutGameService {
         }
         for (String id : captured) {
             var other = game.pieces.get(id);
-            other.status = PieceStatus.READY; other.nodeId = null; other.route = YutBoard.OUTER; other.group = List.of(id);
+            other.status = PieceStatus.READY; other.nodeId = null; other.route = YutBoard.OUTER;
+            other.history = new ArrayList<>(); other.group = List.of(id);
         }
         var group = new ArrayList<>(moving);
         group.addAll(stacked);
@@ -149,7 +195,8 @@ public class YutGameService {
         for (String id : members) {
             var member = game.pieces.get(id);
             member.status = destination.finished() ? PieceStatus.FINISHED : PieceStatus.ON_BOARD;
-            member.nodeId = destination.nodeId(); member.route = destination.route(); member.group = members;
+            member.nodeId = destination.nodeId(); member.route = destination.route();
+            member.history = new ArrayList<>(destination.history()); member.group = members;
         }
         game.tokens.remove(token.moveTokenId()); game.usedTokens.add(token.moveTokenId());
         game.selectedToken = null; game.selectedPiece = null;
@@ -167,13 +214,31 @@ public class YutGameService {
         } else if (!game.tokens.isEmpty()) game.turnPhase = TurnPhase.WAITING_MOVE;
         else if (game.pendingBonusThrows > 0) game.turnPhase = TurnPhase.WAITING_THROW;
         else {
-            game.turnIndex = (game.turnIndex + 1) % game.turnOrder.size(); game.turnNo++;
-            game.throwResults.clear(); game.turnPhase = TurnPhase.WAITING_THROW;
+            advanceTurn(room);
         }
         events.game(room, "YUT_PIECE_MOVED", payload);
         if (won) events.game(room, "GAME_FINISHED", Map.of());
         else if (game.currentPlayer() != player) turnEvent(room);
         return result;
+    }
+    private void consumeSelectedToken(RoomRuntime room) {
+        var game = game(room);
+        var token = game.tokens.remove(game.selectedToken);
+        game.usedTokens.add(token.moveTokenId());
+        game.selectedToken = null;
+        if (!game.tokens.isEmpty()) game.turnPhase = TurnPhase.WAITING_MOVE;
+        else if (game.pendingBonusThrows > 0) game.turnPhase = TurnPhase.WAITING_THROW;
+        else {
+            advanceTurn(room);
+            turnEvent(room);
+        }
+    }
+    private void advanceTurn(RoomRuntime room) {
+        var game = game(room);
+        game.turnIndex = (game.turnIndex + 1) % game.turnOrder.size();
+        game.turnNo++;
+        game.throwResults.clear();
+        game.turnPhase = TurnPhase.WAITING_THROW;
     }
     private void turnEvent(RoomRuntime room) {
         var game = game(room);

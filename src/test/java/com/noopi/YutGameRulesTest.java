@@ -18,7 +18,10 @@ class YutGameRulesTest {
     static class Dice extends Random {
         final Queue<Boolean> faces = new ArrayDeque<>();
         Dice() { super(12); }
-        void result(int fronts) { for (int i = 0; i < 4; i++) faces.add(i < fronts); }
+        void result(int fronts) {
+            for (int i = 0; i < 4; i++) faces.add(fronts == 1 ? i == 1 : i < fronts);
+        }
+        void backDo() { faces.addAll(List.of(true, false, false, false)); }
         @Override public boolean nextBoolean() { return faces.remove(); }
     }
     static class Events implements RoomEvents {
@@ -38,7 +41,7 @@ class YutGameRulesTest {
         store = new RoomStore(new Random(1), Clock.systemUTC());
         room = store.create(new PlayerRuntime(1, "host", "방장", "MALE"));
         room.players.put(2L, new PlayerRuntime(2, "guest", "손님", "FEMALE"));
-        service = new YutGameService(dice, events); projection = new YutStateProjection(service);
+        service = YutGameService.withNakProbability(dice, events, 0); projection = new YutStateProjection(service);
         room.session = new GameSessionRuntime(100, "YUT", service.prepare("INDIVIDUAL"));
     }
     YutGameRuntime game() { return (YutGameRuntime) room.session.game; }
@@ -50,6 +53,9 @@ class YutGameRulesTest {
     void error(ErrorCode expected, Runnable action) { assertThatThrownBy(action::run).isInstanceOfSatisfying(DomainException.class, e -> assertThat(e.code()).isEqualTo(expected)); }
     YutGameService.ThrowResult roll(int fronts) {
         return store.inRoom(room.id, r -> { dice.result(fronts); return service.throwYut(r, current()); });
+    }
+    YutGameService.ThrowResult rollBackDo() {
+        return store.inRoom(room.id, r -> { dice.backDo(); return service.throwYut(r, current()); });
     }
     void token(String id) { store.inRoom(room.id, r -> { service.selectToken(r, current(), id); return null; }); }
     YutGameService.MoveResult move(Piece p) { return store.inRoom(room.id, r -> service.selectPiece(r, current(), p.id)); }
@@ -74,12 +80,91 @@ class YutGameRulesTest {
     }
     @Test void randomOutcomesUseAllFourFacesAndBonusThrowsPrecedeTokens() {
         start();
-        var yut = roll(4); var mo = roll(0); var gae = roll(2);
+        var yut = roll(4); var mo = roll(0); var backDo = rollBackDo();
         assertThat(yut.result()).isEqualTo(Result.YUT); assertThat(mo.result()).isEqualTo(Result.MO);
-        assertThat(gae.result()).isEqualTo(Result.GAE); assertThat(game().pendingBonusThrows).isZero();
+        assertThat(backDo.result()).isEqualTo(Result.BACK_DO); assertThat(backDo.steps()).isEqualTo(-1);
+        assertThat(game().pendingBonusThrows).isZero();
         assertThat(game().tokens).hasSize(3);
-        assertThat(game().throwResults).containsExactly(Result.YUT, Result.MO, Result.GAE);
+        assertThat(game().throwResults).containsExactly(Result.YUT, Result.MO, Result.BACK_DO);
         error(INVALID_TURN_PHASE, () -> roll(1));
+    }
+    @Test void unmarkedSingleFrontIsOrdinaryDo() {
+        start();
+        var ordinaryDo = roll(1);
+        assertThat(ordinaryDo.result()).isEqualTo(Result.DO);
+        assertThat(ordinaryDo.steps()).isEqualTo(1);
+    }
+    @Test void nakInvalidatesOnlyThatThrowAndPreservesExistingMoveTokens() {
+        service = YutGameService.withNakProbability(dice, events, 1);
+        projection = new YutStateProjection(service);
+        start();
+        long actor = current();
+        game().tokens.put("saved", new MoveToken("saved", Result.GAE, 2));
+        game().pendingBonusThrows = 2;
+
+        var nak = store.inRoom(room.id, r -> service.throwYut(r, actor));
+
+        assertThat(nak.result()).isEqualTo(Result.NAK);
+        assertThat(nak.steps()).isZero();
+        assertThat(nak.moveTokenId()).isNull();
+        assertThat(nak.bonusThrowGranted()).isFalse();
+        assertThat(game().currentPlayer()).isEqualTo(actor);
+        assertThat(game().turnNo).isEqualTo(1);
+        assertThat(game().tokens).containsOnlyKeys("saved");
+        assertThat(game().pendingBonusThrows).isZero();
+        assertThat(game().turnPhase).isEqualTo(TurnPhase.WAITING_MOVE);
+        assertThat(game().lastThrow.result()).isEqualTo(Result.NAK);
+        assertThat(events.types).endsWith("YUT_TURN_CHANGED", "YUT_THROW_RESOLVED");
+        assertThat(projection.project(room, actor).get("lastThrow")).isEqualTo(game().lastThrow);
+    }
+    @Test void nakWithoutAnExistingMoveTokenImmediatelyAdvances() {
+        service = YutGameService.withNakProbability(dice, events, 1);
+        start();
+        long actor = current();
+
+        store.inRoom(room.id, r -> service.throwYut(r, actor));
+
+        assertThat(game().currentPlayer()).isNotEqualTo(actor);
+        assertThat(game().turnNo).isEqualTo(2);
+        assertThat(game().turnPhase).isEqualTo(TurnPhase.WAITING_THROW);
+        assertThat(events.types).endsWith("YUT_THROW_RESOLVED", "YUT_TURN_CHANGED");
+    }
+    @Test void backDoWrapsFromFirstNodeToStartAndAppliesStackAndCapture() {
+        start();
+        Piece moving = own(1), ally = own(2), victim = enemy(1);
+        place(moving, "OUTER_1", YutBoard.OUTER);
+        place(ally, "OUTER_20", YutBoard.OUTER);
+        place(victim, "OUTER_20", YutBoard.OUTER);
+        token(rollBackDo().moveTokenId());
+        var result = move(moving);
+        assertThat(result.toNodeId()).isEqualTo("OUTER_20");
+        assertThat(result.stackedPieceIds()).containsExactly(ally.id);
+        assertThat(result.capturedPieceIds()).containsExactly(victim.id);
+        assertThat(moving.group).containsExactly(moving.id, ally.id);
+        assertThat(victim.status).isEqualTo(PieceStatus.READY);
+        assertThat(result.bonusThrowGranted()).isTrue();
+    }
+    @Test void backDoFromStartFinishesTheWholeGroupAndCanWin() {
+        start();
+        Piece first = own(1), second = own(2);
+        place(first, "OUTER_20", YutBoard.OUTER); place(second, "OUTER_20", YutBoard.OUTER);
+        first.group = second.group = List.of(first.id, second.id);
+        own(3).status = own(4).status = PieceStatus.FINISHED;
+        token(rollBackDo().moveTokenId());
+        var result = move(first);
+        assertThat(result.finished()).isTrue();
+        assertThat(first.status).isEqualTo(PieceStatus.FINISHED);
+        assertThat(second.status).isEqualTo(PieceStatus.FINISHED);
+        assertThat(room.session.status).isEqualTo(GameSessionRuntime.Status.FINISHED);
+    }
+    @Test void backDoTokenExpiresWhenOwnerHasNoOnBoardPiece() {
+        start();
+        long actor = current();
+        token(rollBackDo().moveTokenId());
+        assertThat(game().tokens).isEmpty();
+        assertThat(game().selectedToken).isNull();
+        assertThat(current()).isNotEqualTo(actor);
+        assertThat(game().turnPhase).isEqualTo(TurnPhase.WAITING_THROW);
     }
     @Test void wrongTurnSpectatorAndDuplicateTokenAreRejected() {
         start(); long other = current() == 1 ? 2 : 1;
@@ -149,6 +234,17 @@ class YutGameRulesTest {
         assertThat(YutBoard.move(p, 3, YutBoard.A).nodeId()).isEqualTo("CENTER_5");
         place(p, "CENTER_5", YutBoard.A);
         assertThat(YutBoard.move(p, 2, YutBoard.A).nodeId()).isEqualTo("OUTER_16");
+    }
+    @Test void backDoRetracesTheActualShortcutAtMergedOuterNode() {
+        Piece p = new Piece("test", "1");
+        var toJunction = YutBoard.move(p, 5, YutBoard.OUTER);
+        apply(p, toJunction);
+        var throughShortcut = YutBoard.move(p, 6, YutBoard.A);
+        apply(p, throughShortcut);
+        assertThat(p.nodeId).isEqualTo("OUTER_15");
+        var back = YutBoard.move(p, -1, p.route);
+        assertThat(back.nodeId()).isEqualTo("CENTER_5");
+        assertThat(back.route()).isEqualTo(YutBoard.A);
     }
     @Test void landingOnHomeDoesNotFinishButPassingItFinishesWholeGroupAndWins() {
         start(); Piece first = own(1), second = own(2);
@@ -244,5 +340,11 @@ class YutGameRulesTest {
                 .containsExactlyInAnyOrder(true, false);
         }
         assertThat(game().teams.values().stream().filter(t -> t == Team.NOOPI).count()).isEqualTo(2);
+    }
+    private void apply(Piece piece, YutBoard.Destination destination) {
+        piece.status = destination.finished() ? PieceStatus.FINISHED : PieceStatus.ON_BOARD;
+        piece.nodeId = destination.nodeId();
+        piece.route = destination.route();
+        piece.history = new ArrayList<>(destination.history());
     }
 }

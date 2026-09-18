@@ -50,18 +50,40 @@ class YutHttpIntegrationTest {
     }
     JsonNode state(String client) throws Exception { return value(request("GET", "/api/rooms/" + room + "/state", client, null), 200).at("/gameSession/gameState"); }
     String actor() throws Exception { return clients.get(state(host).at("/turn/currentPlayerId").asLong()); }
-    void throwUntilMove(String actor) throws Exception {
+    String throwUntilMove(String actor) throws Exception {
         for (int i = 0; i < 100 && state(actor).at("/myAction/type").asText().equals("THROW_YUT"); i++) {
             var result = value(request("POST", gamePath + "/yut/throws", actor, null), 200);
-            assertThat(result.get("steps").asInt()).isBetween(1, 5);
-            assertThat(result.get("moveTokenId").asText()).isNotBlank();
+            assertThat(result.get("steps").asInt()).isBetween(-1, 5);
+            if (result.get("result").asText().equals("NAK")) {
+                assertThat(result.get("moveTokenId").isNull()).isTrue();
+                actor = actor();
+            } else assertThat(result.get("moveTokenId").asText()).isNotBlank();
         }
         assertThat(state(actor).at("/myAction/type").asText()).isEqualTo("SELECT_MOVE_TOKEN");
+        return actor;
     }
-    String selectFirstToken(String actor) throws Exception {
-        String token = state(actor).at("/myAction/moveTokenIds/0").asText();
+    record SelectedMove(String pieceId, int steps) {}
+    SelectedMove selectFirstToken(String actor) throws Exception {
+        var game = state(actor);
+        String token = null;
+        int steps = 0;
+        for (var candidate : game.at("/turn/moveTokens")) {
+            if (candidate.get("steps").asInt() > 0) {
+                token = candidate.get("moveTokenId").asText(); steps = candidate.get("steps").asInt(); break;
+            }
+        }
+        if (token == null) {
+            token = "http-positive-test";
+            steps = 2;
+            String stagedToken = token;
+            rooms.inRoom(room, r -> {
+                var runtime = (YutGameRuntime) r.session.game;
+                runtime.tokens.put(stagedToken, new YutGameRuntime.MoveToken(stagedToken, YutGameRuntime.Result.GAE, 2));
+                return null;
+            });
+        }
         value(request("POST", gamePath + "/yut/move-selections", actor, json.writeValueAsString(Map.of("moveTokenId", token))), 204);
-        return state(actor).at("/myAction/eligiblePieceIds/0").asText();
+        return new SelectedMove(state(actor).at("/myAction/eligiblePieceIds/0").asText(), steps);
     }
     @Test void actualHttpAndSocketFlowSupportsCaptureBonusShortcutsEmpty202AndFinish() throws Exception {
         setup(2, "INDIVIDUAL"); value(request("POST", gamePath + "/start", host, null), 204);
@@ -69,19 +91,21 @@ class YutHttpIntegrationTest {
         var listener = new HttpWebSocketIntegrationTest.Listener();
         var socket = http.newWebSocketBuilder().buildAsync(URI.create("ws://localhost:" + port + "/ws?roomId=" + room + "&clientId=" + actor), listener).get(5, TimeUnit.SECONDS);
         try {
-            long actorId = state(actor).at("/turn/currentPlayerId").asLong();
-            String other = clients.entrySet().stream().filter(e -> e.getKey() != actorId).findFirst().orElseThrow().getValue();
+            final long initialActorId = state(actor).at("/turn/currentPlayerId").asLong();
+            String other = clients.entrySet().stream().filter(e -> e.getKey() != initialActorId).findFirst().orElseThrow().getValue();
             assertThat(state(other).get("myAction").isNull()).isTrue();
             value(request("POST", gamePath + "/yut/throws", other, null), 403);
-            throwUntilMove(actor);
-            int steps = state(actor).at("/turn/moveTokens/0/steps").asInt();
+            actor = throwUntilMove(actor);
+            final long movingActorId = state(actor).at("/turn/currentPlayerId").asLong();
+            var selection = selectFirstToken(actor);
+            int steps = selection.steps();
             rooms.inRoom(room, r -> {
                 var g = (YutGameRuntime) r.session.game;
-                g.pieces.values().stream().filter(p -> !p.ownerId.equals(Long.toString(actorId))).limit(2).forEach(p -> {
+                g.pieces.values().stream().filter(p -> !p.ownerId.equals(Long.toString(movingActorId))).limit(2).forEach(p -> {
                     p.status = YutGameRuntime.PieceStatus.ON_BOARD; p.nodeId = "OUTER_" + steps;
                 }); return null;
             });
-            String piece = selectFirstToken(actor);
+            String piece = selection.pieceId();
             var moved = value(request("POST", gamePath + "/yut/piece-selections", actor, json.writeValueAsString(Map.of("pieceId", piece))), 200);
             assertThat(moved.get("capturedPieceIds").size()).isEqualTo(2);
             assertThat(moved.get("bonusThrowGranted").asBoolean()).isTrue();
@@ -101,7 +125,7 @@ class YutHttpIntegrationTest {
             assertThat(shortcut.get("toNodeId").asText()).isEqualTo("CENTER_3");
             rooms.inRoom(room, r -> {
                 var g = (YutGameRuntime) r.session.game;
-                g.pieces.values().stream().filter(p -> p.ownerId.equals(Long.toString(actorId))).forEach(p -> {
+                g.pieces.values().stream().filter(p -> p.ownerId.equals(Long.toString(movingActorId))).forEach(p -> {
                     p.status = p.id.equals(piece) ? YutGameRuntime.PieceStatus.ON_BOARD : YutGameRuntime.PieceStatus.FINISHED;
                     p.nodeId = p.id.equals(piece) ? "OUTER_20" : null; p.route = "OUTER";
                 });
@@ -110,7 +134,7 @@ class YutHttpIntegrationTest {
             });
             value(request("POST", gamePath + "/yut/move-selections", actor, "{\"moveTokenId\":\"finish-test\"}"), 204);
             assertThat(value(request("POST", gamePath + "/yut/piece-selections", actor, json.writeValueAsString(Map.of("pieceId", piece))), 200).get("finished").asBoolean()).isTrue();
-            assertThat(state(actor).at("/winnerPlayer/playerId").asLong()).isEqualTo(actorId);
+            assertThat(state(actor).at("/winnerPlayer/playerId").asLong()).isEqualTo(movingActorId);
             listener.awaitType("GAME_FINISHED");
             assertThat(String.join("\n", listener.received)).doesNotContain("eligiblePieceIds", "eligiblePathIds");
         } finally { socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").get(5, TimeUnit.SECONDS); }
