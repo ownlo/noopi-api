@@ -69,6 +69,7 @@ class HttpWebSocketIntegrationTest {
         String host = client();
         var created = body(request("POST", "/api/rooms", host, playerBody(" 방장 ")), 201);
         long room = created.at("/room/roomId").asLong();
+        assertThat(created.at("/room/roomCode").asText()).matches("\\d{6}");
         assertThat(created.at("/me/nickname").asText()).isEqualTo("방장");
         assertThat(body(request("GET", "/api/rooms/by-code/" + created.at("/room/roomCode").asText(), client(), null), 200).get("roomId").asLong()).isEqualTo(room);
         body(request("POST", "/api/rooms/" + room + "/players", client(), playerBody("시민")), 201);

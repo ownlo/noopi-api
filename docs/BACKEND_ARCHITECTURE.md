@@ -58,6 +58,10 @@ Mobile Web
 ## 4. Room과 GameSession
 Room은 사람들이 모여 있는 공간이며 특정 게임에 종속되지 않는다.
 
+Room Code는 `000000`부터 `999999`까지의 정확히 6자리 숫자 문자열로
+생성한다. 앞자리 `0`을 보존하며, 현재 존재하는 Room의 코드와 충돌하면
+새 코드를 다시 생성한다.
+
 GameSession은 Room에서 진행되는 게임 한 판이다. 한 Room에서 여러 GameSession을 순차적으로 진행할 수 있고 다시하기도 새 GameSession을 생성한다.
 
 GameSession 상태:

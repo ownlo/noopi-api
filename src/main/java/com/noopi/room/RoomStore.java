@@ -3,6 +3,7 @@ package com.noopi.room;
 import java.time.Clock;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
@@ -39,10 +40,7 @@ public class RoomStore {
         return room;
     }
     private String code() {
-        String alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        StringBuilder code = new StringBuilder();
-        for (int i = 0; i < 6; i++) code.append(alphabet.charAt(random.nextInt(alphabet.length())));
-        return code.toString();
+        return String.format(Locale.ROOT, "%06d", random.nextInt(1_000_000));
     }
     public <T> T inRoom(long id, Function<RoomRuntime, T> action) {
         RoomRuntime room = rooms.get(id);

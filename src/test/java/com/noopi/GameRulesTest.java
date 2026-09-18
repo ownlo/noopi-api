@@ -90,6 +90,22 @@ class GameRulesTest {
         assertThat(store.<Integer>inRoom(room, r -> r.players.size())).isEqualTo(2);
     }
 
+    @Test void roomCodeIsExactlySixDigitsAndKeepsLeadingZeroes() {
+        var fixedRandom = new Random() {
+            @Override public int nextInt(int bound) {
+                assertThat(bound).isEqualTo(1_000_000);
+                return 42;
+            }
+        };
+        var fixedStore = new RoomStore(fixedRandom, clock);
+        var host = new PlayerRuntime(fixedStore.nextId(), "host", "방장", "MALE");
+
+        var created = fixedStore.create(host);
+
+        assertThat(created.code).isEqualTo("000042").matches("\\d{6}");
+        assertThat(fixedStore.byCode("000042")).isEqualTo(created.id);
+    }
+
     @Test void readyStateRestoresSelectedCategoryForEveryRoomPlayer() {
         createPlayers(3);
         session = app.createSession(room, "c0", "LIAR", "RANDOM").gameSessionId();

@@ -54,7 +54,8 @@ API에서 ID는 숫자형 식별자를 사용한다.
 }
 ```
 
-Room 참가용 코드는 별도의 `roomCode` 문자열을 사용한다.
+Room 참가용 코드는 별도의 `roomCode` 문자열을 사용한다. `roomCode`는
+정확히 6자리 숫자(`^[0-9]{6}$`)이며 앞자리 `0`을 보존한다.
 
 ### 시간
 
@@ -73,7 +74,7 @@ Room 참가용 코드는 별도의 `roomCode` 문자열을 사용한다.
 ``` json
 {
   "roomId": 100,
-  "roomCode": "AB12CD"
+  "roomCode": "042731"
 }
 ```
 
@@ -156,7 +157,7 @@ Response `201 Created`:
 {
   "room": {
     "roomId": 100,
-    "roomCode": "AB12CD",
+    "roomCode": "042731",
     "status": "WAITING"
   },
   "me": {
@@ -193,7 +194,7 @@ Response `200 OK`:
 ``` json
 {
   "roomId": 100,
-  "roomCode": "AB12CD",
+  "roomCode": "042731",
   "status": "WAITING",
   "playerCount": 4,
   "joinable": true
@@ -367,7 +368,7 @@ Response `200 OK` 예시:
 {
   "room": {
     "roomId": 100,
-    "roomCode": "AB12CD",
+    "roomCode": "042731",
     "status": "ACTIVE",
     "hostPlayerId": 12
   },
@@ -425,7 +426,7 @@ Response `200 OK` 예시:
 {
   "room": {
     "roomId": 100,
-    "roomCode": "AB12CD",
+    "roomCode": "042731",
     "status": "WAITING",
     "hostPlayerId": 12
   },
