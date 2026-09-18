@@ -134,7 +134,37 @@ class YutHttpIntegrationTest {
             });
             value(request("POST", gamePath + "/yut/move-selections", actor, "{\"moveTokenId\":\"finish-test\"}"), 204);
             assertThat(value(request("POST", gamePath + "/yut/piece-selections", actor, json.writeValueAsString(Map.of("pieceId", piece))), 200).get("finished").asBoolean()).isTrue();
-            assertThat(state(actor).at("/winnerPlayer/playerId").asLong()).isEqualTo(movingActorId);
+            assertThat(state(actor).at("/phase").asText()).isEqualTo("PLAYING");
+            assertThat(state(actor).at("/myRank").asInt()).isEqualTo(1);
+            assertThat(state(actor).get("myAction").isNull()).isTrue();
+            assertThat(state(actor).at("/rankings/0/playerId").asLong()).isEqualTo(movingActorId);
+            assertThat(listener.received.stream().noneMatch(message -> message.contains("GAME_FINISHED"))).isTrue();
+
+            String lastActor = actor();
+            long lastActorId = state(lastActor).at("/turn/currentPlayerId").asLong();
+            String[] lastPiece = new String[1];
+            rooms.inRoom(room, r -> {
+                var g = (YutGameRuntime) r.session.game;
+                var ownerPieces = g.pieces.values().stream().filter(p -> p.ownerId.equals(Long.toString(lastActorId))).toList();
+                lastPiece[0] = ownerPieces.getFirst().id;
+                for (int index = 0; index < ownerPieces.size(); index++) {
+                    var p = ownerPieces.get(index);
+                    p.status = index == 0 ? YutGameRuntime.PieceStatus.ON_BOARD : YutGameRuntime.PieceStatus.FINISHED;
+                    p.nodeId = index == 0 ? "OUTER_20" : null;
+                    p.route = "OUTER";
+                }
+                g.tokens.put("last-finish-test", new YutGameRuntime.MoveToken("last-finish-test", YutGameRuntime.Result.DO, 1));
+                g.turnPhase = YutGameRuntime.TurnPhase.WAITING_MOVE;
+                return null;
+            });
+            value(request("POST", gamePath + "/yut/move-selections", lastActor, "{\"moveTokenId\":\"last-finish-test\"}"), 204);
+            assertThat(value(request("POST", gamePath + "/yut/piece-selections", lastActor, json.writeValueAsString(Map.of("pieceId", lastPiece[0]))), 200).get("finished").asBoolean()).isTrue();
+            var finished = state(actor);
+            assertThat(finished.at("/phase").asText()).isEqualTo("FINISHED");
+            assertThat(finished.at("/rankings").size()).isEqualTo(2);
+            assertThat(finished.at("/rankings/0/playerId").asLong()).isEqualTo(movingActorId);
+            assertThat(finished.at("/rankings/1/playerId").asLong()).isEqualTo(lastActorId);
+            assertThat(finished.has("winnerPlayer")).isFalse();
             listener.awaitType("GAME_FINISHED");
             assertThat(String.join("\n", listener.received)).doesNotContain("eligiblePieceIds", "eligiblePathIds");
         } finally { socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").get(5, TimeUnit.SECONDS); }

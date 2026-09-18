@@ -2333,6 +2333,8 @@ Room broadcast:
     { "ownerId": "NOOPI", "count": 0 },
     { "ownerId": "DAY", "count": 0 }
   ],
+  "rankings": [],
+  "myRank": null,
   "myAction": {
     "type": "SELECT_MOVE_TOKEN",
     "moveTokenIds": ["mt-31", "mt-32"]
@@ -2367,8 +2369,30 @@ SELECT_PATH
 `SELECT_PATH`는 선택한 말과 이동권 및 `eligiblePathIds`를 포함한다. Frontend는
 전체 말이나 보드 그래프로 후보를 다시 계산하지 않는다.
 
-종료 단계는 개인전이면 `winnerPlayer`, 팀전이면 `winnerTeam`을 반환한다.
-두 필드는 상호 배타적이며 서버가 판정한 결과만 사용한다.
+개인전의 `rankings`는 지금까지 말 4개를 모두 완주하여 순위가 확정된 Player를
+`rank` 오름차순으로 제공한다. 현재 요청 Player의 순위가 확정되면 `myRank`에
+그 순위를 제공하고 `myAction`은 `null`로 반환한다. 해당 Player는 관전 UI를
+표시한다. 서버는 순위가 확정된 Player를 이후 턴에서 제외한다. Frontend는
+`finishedPieceCounts`로 순위나 관전 여부를 계산하지 않는다. 팀전에서는
+`rankings`는 빈 배열이고 `myRank`는 `null`이다.
+
+개인전 종료 단계는 `winnerPlayer` 대신 전체 `rankings`를 반환하고, 팀전은
+`winnerTeam`을 반환한다. 서버가 판정한 결과만 사용한다.
+
+개인전 종료 예시:
+
+``` json
+{
+  "type": "YUT",
+  "phase": "FINISHED",
+  "mode": "INDIVIDUAL",
+  "rankings": [
+    { "rank": 1, "playerId": 13, "nickname": "예은" },
+    { "rank": 2, "playerId": 12, "nickname": "종윤" },
+    { "rank": 3, "playerId": 14, "nickname": "철수" }
+  ]
+}
+```
 
 ## 팀 선택/변경
 
@@ -2519,6 +2543,12 @@ ACTION_ALREADY_PROCESSED
 `TEAM_FULL`, `GAME_ALREADY_STARTED`, `INVALID_GAME_PHASE`, `INVALID_TURN_PHASE`,
 `MOVE_TOKEN_ALREADY_USED`, `ACTION_ALREADY_PROCESSED`는 409다.
 종료 후 행동은 공통 `GAME_SESSION_ALREADY_FINISHED`(409)를 사용한다.
+
+개인전에서 한 Player의 네 번째 말 이동이 확정되면 서버는 해당 Player의
+다음 순위를 확정하고 남은 이동권과 추가 던지기를 소멸시킨다. 해당 Player를
+턴 순서에서 제외한 뒤 남은 Player에게 턴을 넘긴다. 마지막 Player까지
+완주하면 GameSession을 `FINISHED`로 변경하고 전체 순위를 반환한다. 팀전은
+기존과 같이 한 팀의 말 4개가 완주하는 즉시 종료한다.
 
 ## 윷놀이 WebSocket 이벤트
 

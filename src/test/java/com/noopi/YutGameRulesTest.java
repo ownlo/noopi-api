@@ -144,8 +144,9 @@ class YutGameRulesTest {
         assertThat(victim.status).isEqualTo(PieceStatus.READY);
         assertThat(result.bonusThrowGranted()).isTrue();
     }
-    @Test void backDoFromStartFinishesTheWholeGroupAndCanWin() {
+    @Test void backDoFromStartFinishesTheWholeGroupAndMovesThePlayerToSpectating() {
         start();
+        long actor = current();
         Piece first = own(1), second = own(2);
         place(first, "OUTER_20", YutBoard.OUTER); place(second, "OUTER_20", YutBoard.OUTER);
         first.group = second.group = List.of(first.id, second.id);
@@ -155,7 +156,34 @@ class YutGameRulesTest {
         assertThat(result.finished()).isTrue();
         assertThat(first.status).isEqualTo(PieceStatus.FINISHED);
         assertThat(second.status).isEqualTo(PieceStatus.FINISHED);
-        assertThat(room.session.status).isEqualTo(GameSessionRuntime.Status.FINISHED);
+        assertThat(room.session.status).isEqualTo(GameSessionRuntime.Status.PLAYING);
+        assertThat(game().finishOrder).containsExactly(actor);
+        assertThat(current()).isNotEqualTo(actor);
+        assertThat(projection.project(room, actor)).containsEntry("myRank", 1).containsEntry("myAction", null);
+        error(NOT_CURRENT_TURN, () -> service.throwYut(room, actor));
+    }
+    @Test void finishedPlayerIsRemovedWithoutChangingTheRemainingTurnOrder() {
+        room.players.put(3L, new PlayerRuntime(3, "third", "세번째", "MALE"));
+        start();
+        var originalOrder = List.copyOf(game().turnOrder);
+        long actor = current();
+        long expectedNext = originalOrder.get(1);
+        Piece last = own(1);
+        place(last, "OUTER_20", YutBoard.OUTER);
+        own(2).status = own(3).status = own(4).status = PieceStatus.FINISHED;
+        game().tokens.put("unused", new MoveToken("unused", Result.GAE, 2));
+        game().tokens.put("finish", new MoveToken("finish", Result.DO, 1));
+        game().pendingBonusThrows = 2;
+        game().turnPhase = TurnPhase.WAITING_MOVE;
+
+        token("finish");
+        move(last);
+
+        assertThat(game().turnOrder).containsExactlyElementsOf(originalOrder.subList(1, originalOrder.size()));
+        assertThat(current()).isEqualTo(expectedNext);
+        assertThat(game().tokens).isEmpty();
+        assertThat(game().pendingBonusThrows).isZero();
+        assertThat(game().usedTokens).contains("unused", "finish");
     }
     @Test void backDoTokenExpiresWhenOwnerHasNoOnBoardPiece() {
         start();
@@ -246,19 +274,34 @@ class YutGameRulesTest {
         assertThat(back.nodeId()).isEqualTo("CENTER_5");
         assertThat(back.route()).isEqualTo(YutBoard.A);
     }
-    @Test void landingOnHomeDoesNotFinishButPassingItFinishesWholeGroupAndWins() {
-        start(); Piece first = own(1), second = own(2);
+    @Test void individualGameContinuesUntilEveryPlayerFinishesAndReturnsRankings() {
+        start(); long firstPlayer = current(); Piece first = own(1), second = own(2);
         place(first, "OUTER_19", YutBoard.OUTER); place(second, "OUTER_19", YutBoard.OUTER);
         first.group = second.group = List.of(first.id, second.id);
         own(3).status = own(4).status = PieceStatus.FINISHED;
         var yut = roll(4); token(roll(1).moveTokenId());
         assertThat(move(first).finished()).isFalse(); assertThat(first.nodeId).isEqualTo("OUTER_20");
         token(yut.moveTokenId()); assertThat(move(first).finished()).isTrue();
-        assertThat(room.session.status).isEqualTo(GameSessionRuntime.Status.FINISHED);
+        assertThat(room.session.status).isEqualTo(GameSessionRuntime.Status.PLAYING);
         assertThat(second.status).isEqualTo(PieceStatus.FINISHED);
-        assertThat(projection.project(room, current())).containsKey("winnerPlayer").doesNotContainKey("winnerTeam");
+        assertThat(projection.project(room, firstPlayer)).containsEntry("myRank", 1).containsEntry("myAction", null);
+        assertThat(events.types.stream().filter("GAME_FINISHED"::equals).count()).isZero();
+
+        long lastPlayer = current();
+        Piece last = own(1);
+        place(last, "OUTER_20", YutBoard.OUTER);
+        own(2).status = own(3).status = own(4).status = PieceStatus.FINISHED;
+        game().tokens.put("last-finish", new MoveToken("last-finish", Result.DO, 1));
+        game().turnPhase = TurnPhase.WAITING_MOVE;
+        token("last-finish");
+        assertThat(move(last).finished()).isTrue();
+
+        assertThat(room.session.status).isEqualTo(GameSessionRuntime.Status.FINISHED);
+        assertThat(game().finishOrder).containsExactly(firstPlayer, lastPlayer);
+        assertThat((List<?>) projection.project(room, firstPlayer).get("rankings")).hasSize(2);
+        assertThat(projection.project(room, firstPlayer)).doesNotContainKeys("winnerPlayer", "winnerTeam");
         assertThat(events.types.stream().filter("GAME_FINISHED"::equals).count()).isEqualTo(1);
-        error(GAME_SESSION_ALREADY_FINISHED, () -> service.throwYut(room, current()));
+        error(GAME_SESSION_ALREADY_FINISHED, () -> service.throwYut(room, firstPlayer));
     }
     @Test void projectionProvidesNoActionsToOtherPlayersAndCancelIsRestorable() {
         start(); assertThat(projection.project(room, current() == 1 ? 2 : 1).get("myAction")).isNull();
@@ -319,8 +362,15 @@ class YutGameRulesTest {
                 }
             }
             assertThat(game().phase).as("game %s must complete", run).isEqualTo(Phase.FINISHED);
-            assertThat(game().pieces.values().stream().filter(p -> p.ownerId.equals(game().winnerOwner) && p.status == PieceStatus.FINISHED).count()).isEqualTo(4);
-            assertThat(projection.project(room, current())).containsKey(run % 2 == 0 ? "winnerPlayer" : "winnerTeam");
+            if (run % 2 == 0) {
+                assertThat(game().finishOrder).hasSize(room.session.participants().size());
+                assertThat(game().pieces.values()).allMatch(p -> p.status == PieceStatus.FINISHED);
+                assertThat((List<?>) projection.project(room, 1).get("rankings")).hasSize(room.session.participants().size());
+                assertThat(projection.project(room, 1)).doesNotContainKeys("winnerPlayer", "winnerTeam");
+            } else {
+                assertThat(game().pieces.values().stream().filter(p -> p.ownerId.equals(game().winnerOwner) && p.status == PieceStatus.FINISHED).count()).isEqualTo(4);
+                assertThat(projection.project(room, 1)).containsKey("winnerTeam");
+            }
         }
     }
     @Test void concurrentTeamSelectionCannotOverfillLastSeat() throws Exception {

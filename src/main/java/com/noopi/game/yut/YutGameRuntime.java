@@ -36,6 +36,7 @@ public final class YutGameRuntime implements GameRuntime {
     public final Map<Long, Team> teams = new LinkedHashMap<>();
     public final Map<String, Piece> pieces = new LinkedHashMap<>();
     public final List<Long> turnOrder = new ArrayList<>();
+    public final List<Long> finishOrder = new ArrayList<>();
     public int turnIndex;
     public long turnNo = 1;
     public TurnPhase turnPhase = TurnPhase.WAITING_THROW;

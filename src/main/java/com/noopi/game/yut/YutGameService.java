@@ -207,17 +207,39 @@ public class YutGameService {
         payload.put("fromNodeId", from); payload.put("toNodeId", result.toNodeId()); payload.put("finished", result.finished());
         payload.put("stackedPieceIds", result.stackedPieceIds()); payload.put("capturedPieceIds", result.capturedPieceIds());
         payload.put("bonusThrowGranted", result.bonusThrowGranted());
-        boolean won = game.pieces.values().stream().filter(p -> p.ownerId.equals(piece.ownerId)).allMatch(p -> p.status == PieceStatus.FINISHED);
-        if (won) {
-            game.winnerOwner = piece.ownerId; game.phase = Phase.FINISHED;
+        boolean ownerFinished = game.pieces.values().stream().filter(p -> p.ownerId.equals(piece.ownerId)).allMatch(p -> p.status == PieceStatus.FINISHED);
+        boolean gameFinished = false;
+        if (ownerFinished && game.mode == Mode.TEAM) {
+            game.winnerOwner = piece.ownerId;
+            game.phase = Phase.FINISHED;
             room.session.status = GameSessionRuntime.Status.FINISHED;
+            gameFinished = true;
+        } else if (ownerFinished && game.mode == Mode.INDIVIDUAL) {
+            if (!game.finishOrder.contains(player)) game.finishOrder.add(player);
+            game.usedTokens.addAll(game.tokens.keySet());
+            game.tokens.clear();
+            game.pendingBonusThrows = 0;
+            game.selectedToken = null;
+            game.selectedPiece = null;
+            game.throwResults.clear();
+            if (game.finishOrder.size() == room.session.participants().size()) {
+                game.phase = Phase.FINISHED;
+                room.session.status = GameSessionRuntime.Status.FINISHED;
+                gameFinished = true;
+            } else {
+                int finishedTurnIndex = game.turnIndex;
+                game.turnOrder.remove(finishedTurnIndex);
+                game.turnIndex = finishedTurnIndex % game.turnOrder.size();
+                game.turnNo++;
+                game.turnPhase = TurnPhase.WAITING_THROW;
+            }
         } else if (!game.tokens.isEmpty()) game.turnPhase = TurnPhase.WAITING_MOVE;
         else if (game.pendingBonusThrows > 0) game.turnPhase = TurnPhase.WAITING_THROW;
         else {
             advanceTurn(room);
         }
         events.game(room, "YUT_PIECE_MOVED", payload);
-        if (won) events.game(room, "GAME_FINISHED", Map.of());
+        if (gameFinished) events.game(room, "GAME_FINISHED", Map.of());
         else if (game.currentPlayer() != player) turnEvent(room);
         return result;
     }

@@ -35,13 +35,26 @@ public class YutStateProjection {
             state.put("finishedPieceCounts", game.pieces.values().stream().map(p -> p.ownerId).distinct()
                 .map(owner -> Map.of("ownerId", owner, "count", game.pieces.values().stream()
                     .filter(p -> p.ownerId.equals(owner) && p.status == PieceStatus.FINISHED).count())).toList());
-            state.put("myAction", room.session.active(requester) && game.currentPlayer() == requester ? action(game) : null);
+            var rankings = rankings(room, game);
+            state.put("rankings", rankings);
+            state.put("myRank", rankings.stream().filter(r -> r.get("playerId").equals(requester)).map(r -> r.get("rank")).findFirst().orElse(null));
+            state.put("myAction", room.session.active(requester) && !game.finishOrder.contains(requester) && game.currentPlayer() == requester ? action(game) : null);
         }
         if (game.phase == Phase.FINISHED) {
             if (game.mode == Mode.TEAM) state.put("winnerTeam", teams(room).stream().filter(t -> t.get("team").equals(game.winnerOwner)).findFirst().orElseThrow());
-            else state.put("winnerPlayer", player(room, Long.parseLong(game.winnerOwner)));
+            else state.put("rankings", rankings(room, game));
         }
         return state;
+    }
+    private List<Map<String, Object>> rankings(RoomRuntime room, YutGameRuntime game) {
+        if (game.mode == Mode.TEAM) return List.of();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (int index = 0; index < game.finishOrder.size(); index++) {
+            Map<String, Object> ranking = new LinkedHashMap<>(player(room, game.finishOrder.get(index)));
+            ranking.put("rank", index + 1);
+            result.add(ranking);
+        }
+        return List.copyOf(result);
     }
     private Map<String, Object> action(YutGameRuntime game) {
         if (game.turnPhase == TurnPhase.WAITING_THROW) return Map.of("type", "THROW_YUT");
