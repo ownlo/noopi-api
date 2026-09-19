@@ -44,11 +44,11 @@ class HttpWebSocketIntegrationTest {
     String playerBody(String nickname) { return "{\"nickname\":\"" + nickname + "\",\"gender\":\"MALE\"}"; }
     @AfterEach void closeSockets() { sockets.forEach(s -> s.sendClose(WebSocket.NORMAL_CLOSURE, "test done")); }
 
-    @Test void corsPreflightAllowsYutTeamSelectionPut() throws Exception {
+    @Test void corsPreflightAllowsGameActionHeadersAndMethods() throws Exception {
         var response = http.send(HttpRequest.newBuilder(URI.create(base() + "/api/rooms/1/game-sessions/1/yut/team"))
             .header("Origin", "http://localhost:3000")
             .header("Access-Control-Request-Method", "PUT")
-            .header("Access-Control-Request-Headers", "content-type,x-client-id")
+            .header("Access-Control-Request-Headers", "content-type,x-client-id,idempotency-key")
             .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
             .build(), HttpResponse.BodyHandlers.ofString());
 
@@ -56,6 +56,8 @@ class HttpWebSocketIntegrationTest {
         assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).contains("http://localhost:3000");
         assertThat(response.headers().firstValue("Access-Control-Allow-Methods")).hasValueSatisfying(methods ->
             assertThat(methods).contains("PUT"));
+        assertThat(response.headers().firstValue("Access-Control-Allow-Headers")).hasValueSatisfying(headers ->
+            assertThat(headers.toLowerCase(Locale.ROOT)).contains("idempotency-key"));
     }
 
     @Test void restContractsCatalogMigrationAndErrors() throws Exception {

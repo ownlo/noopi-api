@@ -21,6 +21,6 @@ public class WebConfig implements WebSocketConfigurer, WebMvcConfigurer {
     }
     @Override public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**").allowedOrigins(origins).allowedMethods("GET", "POST", "PUT", "DELETE")
-            .allowedHeaders("Content-Type", "X-Client-Id");
+            .allowedHeaders("Content-Type", "X-Client-Id", "Idempotency-Key");
     }
 }
