@@ -126,6 +126,11 @@ Player의 역할과 게임 종료 후 전체 역할은 공개 정보로 전환�
 -   `YUT_TURN_CHANGED`
 -   `YUT_THROW_RESOLVED`
 -   `YUT_PIECE_MOVED`
+-   `PIG_ROLL_RESOLVED`
+-   `PIG_TURN_CHANGED`
+-   `PIG_PLAYER_FINISHED`
+
+피그 이벤트는 서버가 확정한 공개 결과와 상태 변경만 알린다. Client는 이벤트 payload만으로 주사위 후보, 점수, 다음 턴, 순위 또는 종료를 계산하지 않고 개인화된 `/state`를 다시 조회한다. 전체 종료는 공통 `GAME_FINISHED`를 사용한다.
 
 이 이벤트에는 서버가 확정한 공개 결과만 포함한다. 행동 가능 여부와 이동
 가능한 말·경로 후보는 개인화된 `/state`로 조회한다. Client는 이벤트

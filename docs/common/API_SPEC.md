@@ -8,7 +8,8 @@
 공통 서비스 규칙은 `SERVICE_SPEC.md`, GameSession 생명주기는
 `GAME_SESSION_SPEC.md`, 실시간 원칙은 `REALTIME_SPEC.md`, 게임별 규칙은
 `games/LIAR_GAME_SPEC.md`, `games/BLIND_GAME_SPEC.md`,
-`games/MAFIA_GAME_SPEC.md`, `games/YUT_GAME_SPEC.md`를 따른다.
+`games/MAFIA_GAME_SPEC.md`, `games/YUT_GAME_SPEC.md`,
+`games/PIG_GAME_SPEC.md`를 따른다.
 
 서버의 현재 상태가 Source of Truth이며, 클라이언트는 게임
 상태·역할·승패·투표 결과를 자체 계산하지 않는다.
@@ -757,6 +758,13 @@ Response `200 OK`:
       "name": "윷놀이",
       "minPlayers": 2,
       "maxPlayers": 4,
+      "enabled": true
+    },
+    {
+      "gameType": "PIG",
+      "name": "피그",
+      "minPlayers": 2,
+      "maxPlayers": 6,
       "enabled": true
     }
   ]
@@ -2603,6 +2611,138 @@ GameSession을 `FINISHED`로 변경하여 전체 순위를 반환한다. 팀전�
 ```
 
 후보 목록은 broadcast하지 않고 개인화된 `/state`로 제공한다.
+
+------------------------------------------------------------------------
+
+# PIG Game API
+
+## PIG 상태
+
+`GET /api/rooms/{roomId}/state`에서 `gameState.type = "PIG"`이면 서버가 확정한 공개 진행 상태와 요청 Player의 허용 행동을 반환한다.
+
+``` json
+{
+  "type": "PIG",
+  "phase": "PLAYING",
+  "targetScore": 50,
+  "currentPlayerId": 12,
+  "turnScore": 8,
+  "availableDiceValues": [1, 2, 4, 6],
+  "removedDiceValues": [3, 5],
+  "lastDiceValue": 3,
+  "lastTurnOutcome": null,
+  "lostTurnScore": 0,
+  "bustProbability": 0.25,
+  "players": [
+    { "playerId": 12, "nickname": "철수", "totalScore": 28, "status": "PLAYING", "rank": null },
+    { "playerId": 13, "nickname": "누피", "totalScore": 54, "status": "FINISHED", "rank": 1 }
+  ],
+  "allowedActions": ["ROLL", "STOP"]
+}
+```
+
+`bustProbability`는 서버가 `1 / availableDiceValues.length`로 계산한 `0`~`1` 비율이다. Client는 표시 형식만 변환한다. `BUSTED` 직후에는 `lastTurnOutcome = "BUSTED"`와 잃은 점수인 `lostTurnScore`를 제공한다.
+
+GameSession 생성 요청은 다음과 같다.
+
+``` json
+{
+  "gameType": "PIG",
+  "config": {}
+}
+```
+
+피그는 2~6명 개인전이며 설정 가능한 항목이 없다. 목표 점수, 주사위 면, 숫자 제거 규칙을 config로 보내면 `INVALID_GAME_CONFIG`를 반환한다. 시작 시 서버는 참가 인원 2~6명을 검증하고 턴 순서, Player 상태, 첫 턴을 초기화한다.
+
+## PIG 주사위 던지기
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/pig/roll
+```
+
+``` text
+X-Client-Id: <clientId>
+Idempotency-Key: <unique-request-id>
+```
+
+Request body 없음. Response는 `204 No Content`다. 서버는 현재 Player, `PLAYING` phase, `ROLL` 허용 여부, idempotency key를 검증한 뒤 주사위 결과와 점수·제거 숫자·다음 턴을 원자적으로 확정한다.
+
+## PIG 멈추기
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/pig/stop
+```
+
+``` text
+X-Client-Id: <clientId>
+Idempotency-Key: <unique-request-id>
+```
+
+Request body 없음. Response는 `204 No Content`다. 서버는 `STOP` 허용 여부를 검증하고 점수 확정, FINISHED와 순위, 다음 턴 또는 전체 종료를 원자적으로 처리한다. Client는 점수나 순위를 optimistic하게 확정하지 않는다.
+
+주요 오류:
+
+``` text
+GAME_SESSION_NOT_FOUND
+PLAYER_NOT_IN_GAME
+INVALID_GAME_PHASE
+NOT_CURRENT_PLAYER
+ACTION_NOT_ALLOWED
+DUPLICATE_ACTION
+```
+
+## PIG 종료 상태
+
+``` json
+{
+  "type": "PIG",
+  "phase": "FINISHED",
+  "targetScore": 50,
+  "currentPlayerId": null,
+  "turnScore": 0,
+  "availableDiceValues": [],
+  "removedDiceValues": [],
+  "rankings": [
+    { "rank": 1, "playerId": 13, "nickname": "누피", "totalScore": 54 },
+    { "rank": 2, "playerId": 12, "nickname": "철수", "totalScore": 51 },
+    { "rank": 3, "playerId": 14, "nickname": "영희", "totalScore": 57 },
+    { "rank": 4, "playerId": 15, "nickname": "민수", "totalScore": 38 }
+  ],
+  "allowedActions": []
+}
+```
+
+`rankings`는 FINISHED 확정 순서이며 점수순이 아니다. 마지막 Player는 50점 미만이어도 서버가 마지막 순위로 확정한다.
+
+## PIG WebSocket 이벤트
+
+관련 이벤트는 `PIG_ROLL_RESOLVED`, `PIG_TURN_CHANGED`, `PIG_PLAYER_FINISHED`다. 전체 게임 종료는 공통 `GAME_FINISHED`를 사용한다.
+
+``` json
+{
+  "type": "PIG_ROLL_RESOLVED",
+  "gameSessionId": 55,
+  "payload": { "playerId": 12, "diceValue": 3, "busted": false }
+}
+```
+
+``` json
+{
+  "type": "PIG_TURN_CHANGED",
+  "gameSessionId": 55,
+  "payload": { "previousPlayerId": 12, "currentPlayerId": 14, "reason": "STOPPED" }
+}
+```
+
+``` json
+{
+  "type": "PIG_PLAYER_FINISHED",
+  "gameSessionId": 55,
+  "payload": { "playerId": 13, "rank": 1, "totalScore": 54 }
+}
+```
+
+`PIG_TURN_CHANGED.reason`은 `STOPPED` 또는 `BUSTED`다. 모든 이벤트는 상태 갱신 신호이며 Client는 수신 후 `room-state` Query를 invalidate한다. 이벤트를 놓쳐도 `/state`로 현재 점수, 턴, 제거 숫자, 순위와 종료 상태를 완전히 복구할 수 있어야 한다.
 
 ------------------------------------------------------------------------
 

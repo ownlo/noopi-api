@@ -23,7 +23,9 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(MissingRequestHeaderException.class)
     ResponseEntity<ErrorResponse> missingClient(MissingRequestHeaderException ex) {
-        return domain(ErrorCode.PLAYER_NOT_IN_ROOM.exception());
+        return "X-Client-Id".equalsIgnoreCase(ex.getHeaderName())
+            ? domain(ErrorCode.PLAYER_NOT_IN_ROOM.exception())
+            : malformed(ex);
     }
 
     // Transport errors are not domain error codes; use HTTP's standard names.

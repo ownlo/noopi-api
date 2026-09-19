@@ -22,6 +22,23 @@
 API가 `game/yut` Runtime·경로·서비스·Projection에 연결되어 있다.
 기존 라이어/블라인드/마피아 구현은 유지했다.
 
+## 피그 구현/검증 체크리스트
+
+- [x] 카탈로그 및 `gameType = PIG`, 빈 config, 2~6명 검증.
+- [x] `game/pig` Runtime·Service·Projection을 다른 게임과 독립 구성.
+- [x] 서버 난수로 현재 후보 중 주사위 결과 확정.
+- [x] 성공한 2~6의 턴 한정 제거와 서버 `bustProbability` 제공.
+- [x] 1 발생 시 턴 점수 소멸, 총점 유지, 다음 PLAYING Player 전환.
+- [x] STOP 점수 확정과 50점 도달 순서 기반 FINISHED/순위 처리.
+- [x] FINISHED Player 턴 제외와 마지막 Player 자동 마지막 순위.
+- [x] ROLL/STOP `Idempotency-Key` 중복 방지와 Room 단위 원자 처리.
+- [x] 현재 Player에게만 `allowedActions`를 제공하는 `/state` Projection.
+- [x] PIG 전용 이벤트와 공통 `GAME_FINISHED` 연동.
+- [x] 규칙 단위 테스트와 HTTP/WebSocket 통합 테스트 추가.
+
+PIG는 Runtime 전용 상태이므로 DB/Flyway 변경이 없다. 윷놀이 결과 UI와의
+디자인 유사성은 Frontend 책임이며 Backend 게임 모듈 간 의존은 없다.
+
 ## 윷놀이 구현/검증 체크리스트
 
 아래는 구현 및 테스트 확인 목록이다. 규칙은

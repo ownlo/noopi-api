@@ -12,6 +12,7 @@
 - `docs/common/games/BLIND_GAME_SPEC.md`
 - `docs/common/games/MAFIA_GAME_SPEC.md`
 - `docs/common/games/YUT_GAME_SPEC.md`
+- `docs/common/games/PIG_GAME_SPEC.md`
 
 `docs/common/`은 Frontend의 동일 디렉터리와 내용까지 일치시킨다. 아래 구조는
 구현 목표이며 게임별 실제 구현 여부는 `IMPLEMENTATION_NOTES.md`를 확인한다.
@@ -93,6 +94,7 @@ MVP에서 다음은 서버 Memory에 둔다.
 - 윷놀이 모드, 팀 구성, 턴 순서/phase, 이동권, 추가 던지기 수
 - 윷놀이 말 위치/경로/그룹/완주 현황, 선택 중인 이동권/말/경로 후보,
   개인전 완주 순위와 팀전 승자
+- 피그 Player별 확정 점수/상태/순위, 현재 턴 점수, 사용 가능/제거 숫자와 최근 결과
 - 최근 사용 제시어 식별값
 - WebSocket 연결 관련 Runtime 정보
 
@@ -284,6 +286,25 @@ Room 잠금 안에서 현재 턴, 행동 단계, 소유자와 후보를 재검�
 윷놀이에는 연결 종료를 이유로 자동 턴 넘김, 자동 이동, 임의 승리 또는
 장기 미접속 제외를 도입하지 않는다. 상세 미확정 항목은 구현 노트를 따른다.
 
+## 16-4. 피그 Runtime
+
+피그 상세 규칙은 `game/pig` 모듈이 소유한다. `PigGameRuntime`은 Player별
+`totalScore`/상태/순위, 턴 순서와 현재 턴 점수, 사용 가능·제거 숫자, 최근
+주사위 결과를 보관한다. Room과 윷놀이 모듈은 피그 규칙을 알지 않는다.
+
+`PigGameService`의 ROLL/STOP은 Room 잠금 안에서 현재 Player, phase,
+허용 행동과 `Idempotency-Key`를 검증하고 상태 변경과 이벤트 발행을 함께
+처리한다. 50점 도달 순위 및 마지막 Player 자동 순위도 같은 원자 경계에서
+확정한다.
+
+`PigStateProjection`은 서버 확정 상태와 요청 Player의 `allowedActions`만
+반환한다. Client가 확률이나 Player 목록으로 주사위 결과, 다음 턴, 순위 또는
+종료를 계산할 수 있도록 별도 판정 데이터를 만들지 않는다.
+
+`PIG_ROLL_RESOLVED`, `PIG_TURN_CHANGED`, `PIG_PLAYER_FINISHED`는 상태 갱신
+신호이며 전체 종료에는 공통 `GAME_FINISHED`를 사용한다. 재접속은 이벤트
+재생이 아니라 `/state` projection으로 복구한다.
+
 ## 17. Disconnect / Reconnect
 WebSocket 연결 종료는 Room 탈퇴가 아니다. Player를 `DISCONNECTED`로 표시하고 일정 시간 재접속을 허용한다.
 
@@ -321,6 +342,7 @@ Host가 Disconnect되어도 Room을 자동 종료하거나 Host 권한을 이전
 - 마피아 밤 결과·사망·승리 판정과 방장의 결과 단계 진행
 - 윷놀이 팀 정원 경쟁, 이동권 중복 소비, 그룹 이동/잡기/완주와
   개인전 순위·팀전 승리 확정
+- 피그 중복 ROLL/STOP, 점수 확정·턴 전환과 FINISHED/마지막 순위 확정
 
 전역 Lock 하나로 모든 Room을 직렬화하지 않는다.
 

@@ -32,6 +32,11 @@ class HttpWebSocketIntegrationTest {
         if (body != null) builder.header("Content-Type", "application/json");
         return http.send(builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
     }
+    HttpResponse<String> pigAction(String path, String client, String actionKey) throws Exception {
+        return http.send(HttpRequest.newBuilder(URI.create(base() + path)).timeout(Duration.ofSeconds(10))
+            .header("X-Client-Id", client).header("Idempotency-Key", actionKey)
+            .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+    }
     JsonNode body(HttpResponse<String> response, int status) throws Exception {
         assertThat(response.statusCode()).as(response.body()).isEqualTo(status);
         return json.readTree(response.body());
@@ -66,6 +71,9 @@ class HttpWebSocketIntegrationTest {
         assertThat(games.get(2).get("gameType").asText()).isEqualTo("MAFIA");
         assertThat(games.get(2).get("minPlayers").asInt()).isEqualTo(4);
         assertThat(games.get(2).get("maxPlayers").asInt()).isEqualTo(12);
+        assertThat(games.get(4).get("gameType").asText()).isEqualTo("PIG");
+        assertThat(games.get(4).get("minPlayers").asInt()).isEqualTo(2);
+        assertThat(games.get(4).get("maxPlayers").asInt()).isEqualTo(6);
         String host = client();
         var created = body(request("POST", "/api/rooms", host, playerBody(" 방장 ")), 201);
         long room = created.at("/room/roomId").asLong();
@@ -80,7 +88,40 @@ class HttpWebSocketIntegrationTest {
         assertThat(request("GET", "/api/rooms/" + room + "/state", null, null).statusCode()).isEqualTo(403);
         assertThat(request("GET", "/api/games/liar/keywords", null, null).statusCode()).isEqualTo(404);
         assertThat(body(request("GET", "/actuator/health", null, null), 200).get("status").asText()).isEqualTo("UP");
-        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(29);
+        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(31);
+    }
+
+    @Test void pigHttpFlowUsesServerStateEventsAndIdempotency() throws Exception {
+        String host = client();
+        var created = body(request("POST", "/api/rooms", host, playerBody("방장")), 201);
+        long room = created.at("/room/roomId").asLong();
+        long hostId = created.at("/me/playerId").asLong();
+        String guest = client();
+        long guestId = body(request("POST", "/api/rooms/" + room + "/players", guest, playerBody("손님")), 201)
+            .get("playerId").asLong();
+        var listener = new Listener(); connect(room, host, listener);
+        String roomPath = "/api/rooms/" + room;
+        long session = body(request("POST", roomPath + "/game-sessions", host,
+            "{\"gameType\":\"PIG\",\"config\":{}}"), 201).get("gameSessionId").asLong();
+        String gamePath = roomPath + "/game-sessions/" + session;
+        assertThat(request("POST", gamePath + "/start", host, null).statusCode()).isEqualTo(204);
+
+        var before = body(request("GET", roomPath + "/state", host, null), 200).at("/gameSession/gameState");
+        assertThat(before.get("targetScore").asInt()).isEqualTo(50);
+        assertThat(before.get("availableDiceValues").size()).isEqualTo(6);
+        long current = before.get("currentPlayerId").asLong();
+        String actor = current == hostId ? host : guest;
+        assertThat(current).isIn(hostId, guestId);
+        assertThat(body(request("POST", gamePath + "/pig/roll", actor, null), 400).get("code").asText())
+            .isEqualTo("BAD_REQUEST");
+        assertThat(pigAction(gamePath + "/pig/roll", actor, "roll-1").statusCode()).isEqualTo(204);
+        listener.awaitType("PIG_ROLL_RESOLVED");
+        assertThat(body(pigAction(gamePath + "/pig/roll", actor, "roll-1"), 409).get("code").asText())
+            .isEqualTo("DUPLICATE_ACTION");
+
+        var after = body(request("GET", roomPath + "/state", host, null), 200).at("/gameSession/gameState");
+        assertThat(after.get("lastDiceValue").asInt()).isBetween(1, 6);
+        assertThat(after.get("players").size()).isEqualTo(2);
     }
 
     @Test void hostCanReturnEveryPlayerToLobby() throws Exception {
