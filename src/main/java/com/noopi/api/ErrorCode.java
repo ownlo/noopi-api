@@ -50,6 +50,8 @@ public enum ErrorCode {
     ACTION_ALREADY_PROCESSED(409, "이미 처리된 행동입니다."),
     NOT_CURRENT_PLAYER(403, "현재 차례의 Player가 아닙니다."),
     ACTION_NOT_ALLOWED(409, "현재 상태에서 허용되지 않는 행동입니다."),
+    INVALID_TOOTH_ID(400, "유효한 이빨 번호가 아닙니다."),
+    TOOTH_ALREADY_SELECTED(409, "이미 선택된 이빨입니다."),
     DUPLICATE_ACTION(409, "이미 처리된 요청입니다.");
 
     public final int status;

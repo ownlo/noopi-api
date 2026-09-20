@@ -9,7 +9,7 @@
 `GAME_SESSION_SPEC.md`, 실시간 원칙은 `REALTIME_SPEC.md`, 게임별 규칙은
 `games/LIAR_GAME_SPEC.md`, `games/BLIND_GAME_SPEC.md`,
 `games/MAFIA_GAME_SPEC.md`, `games/YUT_GAME_SPEC.md`,
-`games/PIG_GAME_SPEC.md`를 따른다.
+`games/PIG_GAME_SPEC.md`, `games/TOOTH_GAME_SPEC.md`를 따른다.
 
 서버의 현재 상태가 Source of Truth이며, 클라이언트는 게임
 상태·역할·승패·투표 결과를 자체 계산하지 않는다.
@@ -507,6 +507,42 @@ Response `200 OK` 예시:
 게임 종료 전에는 현재 Player 본인의 실제 제시어를 응답에 포함하지 않는다.
 상대방의 제시어 카테고리도 반환하지 않는다.
 
+### 누피 콱! 상태
+
+`gameState.type = "TOOTH"`이면 서버가 확정한 공개 이빨 상태와 요청 Player의
+허용 행동을 반환한다. `bombToothId`는 `FINISHED` 전까지 포함하지 않는다.
+
+``` json
+{
+  "type": "TOOTH",
+  "phase": "PLAYING",
+  "turnOrderPlayerIds": [13, 12, 14],
+  "currentTurnPlayerId": 13,
+  "remainingToothCount": 21,
+  "teeth": [
+    { "toothId": 1, "row": "UPPER", "status": "AVAILABLE" },
+    { "toothId": 2, "row": "UPPER", "status": "SELECTED" },
+    { "toothId": 13, "row": "LOWER", "status": "AVAILABLE" }
+  ],
+  "lastSelection": {
+    "sequence": 3,
+    "playerId": 12,
+    "toothId": 2,
+    "outcome": "SAFE"
+  },
+  "allowedActions": ["SELECT_TOOTH"]
+}
+```
+
+`teeth`는 `toothId` 1~24를 모두 포함한다. 1~12는 `UPPER`, 13~24는
+`LOWER`이며 각 줄은 화면 기준 왼쪽에서 오른쪽 순서다. `status`는
+`AVAILABLE` 또는 `SELECTED`다. 위 JSON은 배열 항목 일부만 발췌한 예시이며
+실제 응답에서는 24개를 모두 반환한다. `allowedActions`는 현재 요청 Player가 현재
+턴이고 선택 요청이 허용될 때만 `SELECT_TOOTH`를 포함한다.
+
+다른 Player의 턴이거나 요청 처리 권한이 없으면 `allowedActions`는 빈 배열이다.
+Frontend는 이 배열을 기준으로 이빨 터치 UI를 제공한다.
+
 ### 마피아 게임 개인화 상태
 
 마피아 게임의 `gameState`는 phase와 현재 Player의 생존 여부, 허용된 행동,
@@ -766,6 +802,13 @@ Response `200 OK`:
       "minPlayers": 2,
       "maxPlayers": 6,
       "enabled": true
+    },
+    {
+      "gameType": "TOOTH",
+      "name": "누피 콱!",
+      "minPlayers": 2,
+      "maxPlayers": 8,
+      "enabled": true
     }
   ]
 }
@@ -869,6 +912,18 @@ Request --- 마피아 게임:
   "config": {}
 }
 ```
+
+Request --- 누피 콱!:
+
+``` json
+{
+  "gameType": "TOOTH",
+  "config": {}
+}
+```
+
+누피 콱!에는 사용자 설정이 없다. 이빨 수, 꽝 수 또는 턴 규칙을 config로
+보내면 `INVALID_GAME_CONFIG`를 반환한다.
 
 Request --- 윷놀이 개인전:
 
@@ -997,6 +1052,18 @@ Response:
 → 역할 무작위 배정
 → GameSession PLAYING
 → Mafia phase ROLE_REVEAL
+```
+
+누피 콱!의 경우 서버가 다음을 수행한다.
+
+``` text
+참가 인원이 2~8명인지 검증
+→ 전체 참가자 턴 순서 무작위 확정
+→ 24개 중 꽝 이빨 정확히 1개 무작위 확정
+→ 모든 이빨 AVAILABLE 초기화
+→ 첫 Player 지정
+→ GameSession PLAYING
+→ Tooth phase PLAYING
 ```
 
 주요 오류:
@@ -2743,6 +2810,137 @@ DUPLICATE_ACTION
 
 ------------------------------------------------------------------------
 
+# TOOTH Game API
+
+## 누피 콱! 이빨 선택
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/tooth/selections
+```
+
+Header:
+
+``` text
+X-Client-Id: <clientId>
+Idempotency-Key: <unique-request-id>
+```
+
+Request:
+
+``` json
+{
+  "toothId": 7
+}
+```
+
+안전한 이빨 Response `200 OK`:
+
+``` json
+{
+  "sequence": 4,
+  "playerId": 13,
+  "toothId": 7,
+  "outcome": "SAFE",
+  "nextCurrentTurnPlayerId": 12
+}
+```
+
+꽝 이빨 Response `200 OK`:
+
+``` json
+{
+  "sequence": 4,
+  "playerId": 13,
+  "toothId": 7,
+  "outcome": "BOMB",
+  "nextCurrentTurnPlayerId": null
+}
+```
+
+서버는 Room 단위 동시성 경계 안에서 현재 Player, `PLAYING` phase,
+`SELECT_TOOTH` 허용 여부, `toothId` 범위, 기존 선택 여부와 idempotency key를
+검증한다. `SAFE`면 서버가 다음 턴을 확정하고, `BOMB`이면 요청 Player를 당첨
+Player로 확정한 뒤 GameSession을 즉시 `FINISHED`로 전환한다.
+
+Client는 요청 중 모든 이빨 입력을 잠그며 응답을 받지 못하면 자동 재시도하지
+않고 `/state`를 먼저 조회한다.
+
+주요 오류:
+
+``` text
+GAME_SESSION_NOT_FOUND
+PLAYER_NOT_IN_GAME
+INVALID_GAME_PHASE
+NOT_CURRENT_PLAYER
+ACTION_NOT_ALLOWED
+INVALID_TOOTH_ID
+TOOTH_ALREADY_SELECTED
+DUPLICATE_ACTION
+```
+
+## 누피 콱! 종료 상태
+
+``` json
+{
+  "type": "TOOTH",
+  "phase": "FINISHED",
+  "turnOrderPlayerIds": [13, 12, 14],
+  "currentTurnPlayerId": null,
+  "remainingToothCount": 20,
+  "teeth": [
+    { "toothId": 1, "row": "UPPER", "status": "AVAILABLE" },
+    { "toothId": 7, "row": "UPPER", "status": "SELECTED" }
+  ],
+  "lastSelection": {
+    "sequence": 4,
+    "playerId": 13,
+    "toothId": 7,
+    "outcome": "BOMB"
+  },
+  "result": {
+    "loserPlayer": {
+      "playerId": 13,
+      "nickname": "예은"
+    },
+    "bombToothId": 7
+  },
+  "allowedActions": []
+}
+```
+
+종료 결과에는 `loserPlayer`와 실제 `bombToothId`를 공개한다. 순위와
+`winnerPlayer`는 제공하지 않는다.
+
+## 누피 콱! WebSocket 이벤트
+
+이빨 선택 결과는 `TOOTH_SELECTED`로 알리고 전체 종료는 공통
+`GAME_FINISHED`를 사용한다.
+
+``` json
+{
+  "type": "TOOTH_SELECTED",
+  "gameSessionId": 55,
+  "payload": {
+    "sequence": 4,
+    "playerId": 13,
+    "toothId": 7,
+    "outcome": "SAFE",
+    "nextCurrentTurnPlayerId": 12
+  }
+}
+```
+
+`outcome`은 `SAFE` 또는 `BOMB`다. `BOMB`이면
+`nextCurrentTurnPlayerId = null`이며 이어서 공통 `GAME_FINISHED`가 발생한다.
+`bombToothId`라는 별도 필드는 이벤트에 포함하지 않는다. 이벤트의
+`toothId`가 실제 선택 결과로 `BOMB`임은 그 선택이 확정된 뒤에만 공개된다.
+
+모든 이벤트는 상태 갱신 신호다. Client는 `sequence`로 같은 연출의 중복을
+피할 수 있지만 이벤트만으로 이빨 상태, 남은 수, 행동 권한이나 종료 상태를
+영구 재구성하지 않고 `/state`를 다시 조회한다.
+
+------------------------------------------------------------------------
+
 # Security / Information Exposure
 
 ## 29. 절대 공개하면 안 되는 정보
@@ -2760,6 +2958,7 @@ DUPLICATE_ACTION
 -   전체 제시어 목록
 -   다른 Player의 투표 대상
 -   서버 내부 정답 데이터
+-   누피 콱!에서 아직 선택되지 않은 꽝 이빨 위치
 -   다른 Room의 상태
 
 UI에서 숨기는 것으로 보안을 대체하지 않는다.
@@ -2803,6 +3002,7 @@ Frontend의 버튼 표시 여부는 권한 검증 수단이 아니다.
 -   GameSession 취소
 -   마피아 역할 확인과 밤 행동
 -   마피아 처형 투표와 결과 단계 진행
+-   누피 콱! 이빨 선택
 
 이미 완료된 행동을 다시 요청하면 상태에 따라 `409 Conflict`와 고정 오류
 코드를 반환한다.
@@ -2822,6 +3022,10 @@ gameSessionId + voteRound + voterPlayerId
 ``` text
 gameSessionId + nightNo + playerId
 ```
+
+누피 콱! 이빨 선택은 `Idempotency-Key`와 현재 서버 상태를 함께 검증한다.
+동일 키 재전송은 같은 이빨 선택과 턴 전환을 다시 실행하지 않는다. 서로 다른
+요청의 경합은 Room 단위 원자 처리와 현재 턴 검증으로 하나만 성공시킨다.
 
 ------------------------------------------------------------------------
 
@@ -2922,6 +3126,17 @@ CANNOT_VOTE_SELF
 INVALID_VOTE_TARGET
 ```
 
+### TOOTH Game
+
+``` text
+INVALID_GAME_PHASE
+NOT_CURRENT_PLAYER
+ACTION_NOT_ALLOWED
+INVALID_TOOTH_ID
+TOOTH_ALREADY_SELECTED
+DUPLICATE_ACTION
+```
+
 ------------------------------------------------------------------------
 
 # Frontend Integration Rules
@@ -2949,6 +3164,10 @@ Frontend는 다음 규칙을 따른다.
 13. 경찰 조사 기록과 마피아 동료 목록은 허용된 Player에게만 표시한다.
 14. 마피아 투표 중 완료 Player 신원과 현재 득표수는 표시하지 않는다.
 15. 마피아 사망, 역할 공개, 의심 수, 승패를 Frontend에서 계산하지 않는다.
+16. 누피 콱!의 꽝 위치, 안전/꽝 결과, 다음 턴과 당첨 Player를 Frontend에서
+    계산하지 않는다.
+17. 누피 콱!은 `allowedActions`에 `SELECT_TOOTH`가 있을 때만 선택 가능한
+    이빨 버튼을 활성화하고, Mutation 중에는 전체 이빨 입력을 잠근다.
 
 ------------------------------------------------------------------------
 
@@ -3023,6 +3242,8 @@ Frontend는 다음 규칙을 따른다.
   `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/votes`                  마피아 투표 제출
 
   `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/advance`                마피아 결과 단계 진행
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/tooth/selections`             누피 콱! 이빨 선택
   ------------------------------------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------
@@ -3050,4 +3271,11 @@ Frontend는 다음 규칙을 따른다.
 -   블라인드 게임은 전체 활성 제시어 풀에서 서로 다른 제시어 2개를 선정한다.
 -   블라인드 게임의 카테고리는 선택하거나 공개하지 않는다.
 -   블라인드 게임은 최초 정답자 한 명만 원자적으로 승자로 확정한다.
+-   누피 콱!은 2~8명 개인전이며 24개 이빨 중 꽝은 정확히 1개다.
+-   누피 콱!의 턴 순서, 꽝 위치, 선택 결과, 다음 턴과 당첨 Player는 서버가
+    원자적으로 확정한다.
+-   누피 콱!의 꽝 위치는 실제 `BOMB` 선택이 확정되기 전까지 Client에
+    제공하지 않는다.
+-   누피 콱! 결과에는 당첨 Player 한 명만 제공하며 별도 순위나 승자를 두지
+    않는다.
 -   모든 승패 판정은 서버가 수행한다.

@@ -27,6 +27,9 @@ NOOPI MVP에서 MySQL에 영구 저장하는 데이터의 범위를 정의한다
 - Yut Game mode / 팀 구성 / 턴 순서와 phase / 이동권 / 추가 던지기
 - 윷놀이 말 상태와 Node/경로 / 업힌 그룹 / 선택 중인 행동 / 완주 현황 /
   개인전 순위와 팀전 승자
+- Pig Game 점수 / 턴 / 성공 횟수 / 확률 / Player 상태와 순위
+- Tooth Game 턴 순서 / 현재 턴 / 24개 이빨 상태 / 꽝 이빨 / 최근 결과 /
+  당첨 Player
 
 윷판 Node/Edge 그래프는 게임 모듈의 규칙 정의다. 윷놀이를 위해 콘텐츠
 테이블이나 Runtime 영속화 테이블을 추가하지 않는다. 재접속 복구는 살아
@@ -157,6 +160,10 @@ yut_game
 yut_piece
 yut_move_token
 yut_turn
+pig_game
+pig_turn
+tooth_game
+tooth_selection
 ```
 
 서버 재시작 후 진행 중 게임 복구는 현재 MVP 요구가 아니다.

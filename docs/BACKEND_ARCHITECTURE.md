@@ -13,6 +13,7 @@
 - `docs/common/games/MAFIA_GAME_SPEC.md`
 - `docs/common/games/YUT_GAME_SPEC.md`
 - `docs/common/games/PIG_GAME_SPEC.md`
+- `docs/common/games/TOOTH_GAME_SPEC.md`
 
 `docs/common/`은 Frontend의 동일 디렉터리와 내용까지 일치시킨다. 아래 구조는
 구현 목표이며 게임별 실제 구현 여부는 `IMPLEMENTATION_NOTES.md`를 확인한다.
@@ -48,6 +49,8 @@ Mobile Web
  ├─ Blind Game Runtime
  ├─ Mafia Game Runtime
  ├─ Yut Game Runtime
+ ├─ Pig Game Runtime
+ ├─ Tooth Game Runtime
  ├─ Realtime
  └─ Persistence
        ↓
@@ -95,6 +98,7 @@ MVP에서 다음은 서버 Memory에 둔다.
 - 윷놀이 말 위치/경로/그룹/완주 현황, 선택 중인 이동권/말/경로 후보,
   개인전 완주 순위와 팀전 승자
 - 피그 Player별 확정 점수/상태/순위, 현재 턴 점수, 성공 횟수/1 발생 확률과 최근 결과
+- 누피 콱! 턴 순서, 현재 턴, 24개 이빨 선택 상태, 꽝 이빨, 최근 선택과 당첨 Player
 - 최근 사용 제시어 식별값
 - WebSocket 연결 관련 Runtime 정보
 
@@ -305,6 +309,29 @@ Room 잠금 안에서 현재 턴, 행동 단계, 소유자와 후보를 재검�
 신호이며 전체 종료에는 공통 `GAME_FINISHED`를 사용한다. 재접속은 이벤트
 재생이 아니라 `/state` projection으로 복구한다.
 
+## 16-5. 누피 콱! Runtime
+
+누피 콱! 상세 규칙은 `game/tooth` 모듈이 소유한다. `ToothGameRuntime`은
+참가자 턴 순서, 현재 턴 Player, 24개 이빨 선택 상태, 서버 전용 꽝 이빨,
+증가하는 선택 `sequence`, 최근 결과와 당첨 Player를 보관한다. Room과 다른
+게임 모듈은 꽝 선정, 다음 턴 또는 당첨 판정을 알지 않는다.
+
+시작 시 서버는 2~8명을 검증하고 턴 순서와 꽝 이빨 정확히 하나를 무작위로
+확정한다. `selectTooth`는 Room 잠금 안에서 현재 Player, `PLAYING` phase,
+`SELECT_TOOTH` 허용 여부, 이빨 범위·선택 여부와 `Idempotency-Key`를 검증한다.
+`SAFE`면 이빨 선택과 다음 턴을, `BOMB`이면 이빨 선택·당첨 Player·
+GameSession `FINISHED` 전환을 하나의 원자적 변경으로 처리한다.
+
+`ToothStateProjection`은 진행 중 24개 이빨의 공개 선택 상태, 남은 수, 턴,
+최근 확정 결과와 요청 Player의 `allowedActions`만 반환한다. 서버 내부
+`bombToothId`는 `FINISHED` 전까지 Projection과 이벤트에 포함하지 않는다.
+종료 후에는 당첨 Player와 실제 꽝 이빨을 공개하며 순위나 승자를 만들지 않는다.
+
+`TOOTH_SELECTED`는 확정된 선택 결과의 갱신 신호이며 전체 종료에는 공통
+`GAME_FINISHED`를 사용한다. 재접속은 이벤트 재생이 아니라 `/state`
+Projection으로 복구한다. 연결 종료만으로 자동 턴 전환이나 당첨 처리를 하지
+않고, 진행 중 명시적 이탈이면 공통 게임 규칙에 따라 취소한다.
+
 ## 17. Disconnect / Reconnect
 WebSocket 연결 종료는 Room 탈퇴가 아니다. Player를 `DISCONNECTED`로 표시하고 일정 시간 재접속을 허용한다.
 
@@ -343,6 +370,7 @@ Host가 Disconnect되어도 Room을 자동 종료하거나 Host 권한을 이전
 - 윷놀이 팀 정원 경쟁, 이동권 중복 소비, 그룹 이동/잡기/완주와
   개인전 순위·팀전 승리 확정
 - 피그 중복 ROLL/STOP, 점수 확정·턴 전환과 FINISHED/마지막 순위 확정
+- 누피 콱! 동시 이빨 선택, 중복 키, SAFE 턴 전환과 BOMB 당첨/FINISHED 확정
 
 전역 Lock 하나로 모든 Room을 직렬화하지 않는다.
 

@@ -17,9 +17,10 @@
 7. `docs/common/games/MAFIA_GAME_SPEC.md`
 8. `docs/common/games/YUT_GAME_SPEC.md`
 9. `docs/common/games/PIG_GAME_SPEC.md`
-10. `docs/BACKEND_ARCHITECTURE.md`
-11. `docs/DATABASE.md`
-12. `docs/IMPLEMENTATION_NOTES.md`
+10. `docs/common/games/TOOTH_GAME_SPEC.md`
+11. `docs/BACKEND_ARCHITECTURE.md`
+12. `docs/DATABASE.md`
+13. `docs/IMPLEMENTATION_NOTES.md`
 
 `docs/common/`은 `noopi-web/docs/common/`과 파일 구성 및 내용을 동일하게 유지한다.
 백엔드 전용 운영 계약은 `docs/OPERATIONS_API.md`에서 관리한다.
@@ -86,6 +87,7 @@ Memory:
 - 윷놀이 모드/팀/턴/이동권/말 위치/업힌 그룹/추가 던지기/개인전 순위/팀전 승자
 - 마피아 게임의 역할/생존 상태/밤 행동/조사/의심/처형 투표/사망/승패
 - 피그 주사위 후보/결과, 턴 점수/확정 점수, 턴 순서, FINISHED 순위
+- 누피 콱! 턴 순서, 이빨 선택 상태, 꽝 이빨, 최근 결과와 당첨 Player
 
 MySQL:
 - LiarCategory
@@ -218,6 +220,20 @@ Frontend 계산/버튼 숨김을 권한 검증으로 신뢰하지 않는다.
 - `/state`는 성공 횟수, 서버 확정 확률, Player 상태와 요청 Player의 허용 행동을 제공
 - 행동 요청은 `Idempotency-Key`로 재전송 중복을 방지
 - PIG 구현은 `game/pig`에 격리하며 윷놀이 전용 코드에 의존하지 않음
+
+## 11-5. 누피 콱! 불변 규칙
+
+- 게임 타입 `TOOTH`, 표시 이름 `누피 콱!`, 참가자 2~8명 개인전
+- 윗니 12개와 아랫니 12개, 총 24개이며 꽝은 정확히 1개
+- 시작 시 서버가 전체 턴 순서와 꽝 위치를 무작위로 확정
+- 현재 Player만 `AVAILABLE` 이빨 하나를 선택할 수 있고 턴 넘기기 없음
+- `bombToothId`는 실제 BOMB 선택이 확정되기 전까지 Client에 비공개
+- 안전/꽝, 다음 턴, 당첨 Player와 즉시 종료는 서버가 원자적으로 확정
+- 이빨 선택은 `Idempotency-Key`와 Room 단위 동시성으로 중복 처리 방지
+- 결과는 당첨 Player 한 명이며 순위와 별도 승자는 없음
+- 한 판 더는 새 GameSession으로 이빨, 꽝 위치와 턴 순서를 전부 재초기화
+- `/state`는 24개 공개 선택 상태와 요청 Player의 `allowedActions`를 제공
+- TOOTH 구현은 `game/tooth`에 격리하며 다른 게임 전용 코드에 의존하지 않음
 
 ## 12. 투표 비밀
 
@@ -363,6 +379,10 @@ Room/Player/GameSession/Role/Vote용 테이블을 현재 MVP에 임의 추가하
 - 피그 숫자 반복, 성공별 1 발생 확률 증가, 1 발생 시 턴 점수 소멸, STOP 점수 확정
 - 피그 FINISHED 순서와 마지막 Player 자동 순위
 - 피그 행동 idempotency와 재접속 Projection
+- 누피 콱! 2~8명 시작 검증과 턴 순서/꽝 정확히 1개 초기화
+- 누피 콱! 현재 턴·이빨 범위·중복 선택 검증과 Idempotency-Key 처리
+- 누피 콱! SAFE 다음 턴과 BOMB 즉시 종료의 원자성
+- 누피 콱! 진행 중 꽝 비노출과 재접속 Projection
 
 ## 25. 구현 후
 최소 다음을 실행한다.

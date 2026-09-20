@@ -2,15 +2,16 @@
 
 Java 26 · Spring Boot 3.5 · Spring MVC/WebSocket · JPA · MySQL 8 · Flyway.
 
-## 문서 기준과 윷놀이 구현 범위
+## 문서 기준과 구현 범위
 
 `docs/common/`은 `noopi-web/docs/common/`과 파일 구성 및 내용이 동일하다.
-공통 명세는 라이어·블라인드·마피아·윷놀이·피그를 포함한다. 현재 서버 코드는
-라이어/블라인드/마피아/윷놀이/피그를 지원한다. 윷놀이는 개인전/팀전, 추가 던지기,
+공통 명세는 라이어·블라인드·마피아·윷놀이·피그·누피 콱!을 포함한다. 현재 서버 코드는
+라이어/블라인드/마피아/윷놀이/피그/누피 콱!을 지원한다. 윷놀이는 개인전/팀전, 추가 던지기,
 이동권, 지름길, 업기/잡기/완주와 승리를 서버 Runtime에서 처리한다.
 
 - [윷놀이 규칙](docs/common/games/YUT_GAME_SPEC.md): 개인전/팀전, 턴, 지름길, 업기/잡기/완주.
 - [피그 규칙](docs/common/games/PIG_GAME_SPEC.md): 2~6명 개인전, 성공별 위험도 증가, 점수·순위·종료.
+- [누피 콱! 규칙](docs/common/games/TOOTH_GAME_SPEC.md): 2~8명, 24개 이빨, 서버 꽝 판정과 당첨.
 - [API 계약](docs/common/API_SPEC.md): 윷놀이 행동 API, 개인화 상태, 이벤트와 오류.
 - [백엔드 구조](docs/BACKEND_ARCHITECTURE.md): Runtime/동시성/Projection 구현 목표.
 - [구현 노트](docs/IMPLEMENTATION_NOTES.md): 구현 체크리스트, 미확정 보드 ID 및 연동 차이.
@@ -65,7 +66,7 @@ curl -X POST http://localhost:8080/api/rooms \
 ```
 
 반환된 `roomId`로 다른 브라우저의 Player를 참가시킨 뒤 GameSession을 생성·시작한다.
-라이어, 블라인드, 마피아, 윷놀이, 피그의 상세 행동·응답·이벤트 계약은
+라이어, 블라인드, 마피아, 윷놀이, 피그, 누피 콱!의 상세 행동·응답·이벤트 계약은
 `docs/common/API_SPEC.md`를 따른다. 윷놀이의 5개 전용 엔드포인트와 공통
 카탈로그·생성·시작·취소·상태 조회가 연결되어 있다.
 
@@ -153,6 +154,7 @@ Hibernate는 `validate`만 수행한다.
 
 윷놀이 테스트는 `./gradlew test --tests com.noopi.YutGameRulesTest --tests com.noopi.YutHttpIntegrationTest`로 실행한다.
 피그 테스트는 `./gradlew test --tests com.noopi.PigGameRulesTest --tests com.noopi.HttpWebSocketIntegrationTest`로 실행한다.
+누피 콱! 테스트는 `./gradlew test --tests com.noopi.ToothGameRulesTest --tests com.noopi.HttpWebSocketIntegrationTest`로 실행한다.
 전체 회귀 검증은 `./gradlew test build`를 사용한다. 프론트는 개발 모드에서
 `http://localhost:8080/api`와 `ws://localhost:8080/ws`에 연결하며 Mock을 꺼야 한다.
 

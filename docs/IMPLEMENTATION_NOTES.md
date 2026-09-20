@@ -1,5 +1,28 @@
 # MVP 구현 결정과 SPEC 정합성
 
+## 누피 콱! 구현/검증 체크리스트
+
+표시 이름은 `누피 콱!`, API 게임 타입은 `TOOTH`로 확정했다. 공통 규칙은
+`common/games/TOOTH_GAME_SPEC.md`, DTO·행동·오류·이벤트 계약은
+`common/API_SPEC.md`를 따른다.
+
+아래 항목을 Backend 구현과 테스트에 반영했다.
+
+- [x] 카탈로그 및 `gameType = TOOTH`, 빈 config, 2~8명 검증
+- [x] `game/tooth` Runtime·Service·Projection을 다른 게임과 독립 구성
+- [x] 시작 시 24개 이빨, 꽝 정확히 1개와 전체 턴 순서 무작위 초기화
+- [x] 현재 턴, 1~24 범위, AVAILABLE 상태와 `SELECT_TOOTH` 권한 검증
+- [x] `Idempotency-Key`와 Room 단위 잠금으로 연타·동시 선택 중복 방지
+- [x] SAFE의 이빨 선택/다음 턴과 BOMB의 당첨/FINISHED를 원자적으로 확정
+- [x] 진행 중 `bombToothId`가 `/state`, 이벤트와 로그에 노출되지 않음
+- [x] 종료 Projection에 당첨 Player와 꽝 이빨을 제공하고 순위·승자를 만들지 않음
+- [x] `TOOTH_SELECTED`와 공통 `GAME_FINISHED` 이벤트 연동
+- [x] 재접속 Projection과 진행 중 명시적 이탈 시 CANCELLED 처리
+- [x] 같은 게임 다시하기에서 새 GameSession으로 이빨·꽝·턴 순서를 완전히 재초기화
+- [x] 규칙 단위 테스트와 HTTP/WebSocket 통합 테스트 추가
+
+TOOTH는 Runtime 전용 상태이며 DB/Flyway 변경이 없다.
+
 ## 2026-09-18 Room Code 6자리 숫자화
 
 사용자 요청에 따라 Room Code 계약을 정확히 6자리 숫자 문자열로 확정했다.

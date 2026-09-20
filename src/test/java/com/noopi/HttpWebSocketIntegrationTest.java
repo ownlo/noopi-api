@@ -37,6 +37,13 @@ class HttpWebSocketIntegrationTest {
             .header("X-Client-Id", client).header("Idempotency-Key", actionKey)
             .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
     }
+    HttpResponse<String> toothAction(String path, String client, String actionKey, int toothId) throws Exception {
+        return http.send(HttpRequest.newBuilder(URI.create(base() + path)).timeout(Duration.ofSeconds(10))
+            .header("X-Client-Id", client).header("Idempotency-Key", actionKey)
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString("{\"toothId\":" + toothId + "}"))
+            .build(), HttpResponse.BodyHandlers.ofString());
+    }
     JsonNode body(HttpResponse<String> response, int status) throws Exception {
         assertThat(response.statusCode()).as(response.body()).isEqualTo(status);
         return json.readTree(response.body());
@@ -76,6 +83,9 @@ class HttpWebSocketIntegrationTest {
         assertThat(games.get(4).get("gameType").asText()).isEqualTo("PIG");
         assertThat(games.get(4).get("minPlayers").asInt()).isEqualTo(2);
         assertThat(games.get(4).get("maxPlayers").asInt()).isEqualTo(6);
+        assertThat(games.get(5).get("gameType").asText()).isEqualTo("TOOTH");
+        assertThat(games.get(5).get("minPlayers").asInt()).isEqualTo(2);
+        assertThat(games.get(5).get("maxPlayers").asInt()).isEqualTo(8);
         String host = client();
         var created = body(request("POST", "/api/rooms", host, playerBody(" 방장 ")), 201);
         long room = created.at("/room/roomId").asLong();
@@ -90,7 +100,7 @@ class HttpWebSocketIntegrationTest {
         assertThat(request("GET", "/api/rooms/" + room + "/state", null, null).statusCode()).isEqualTo(403);
         assertThat(request("GET", "/api/games/liar/keywords", null, null).statusCode()).isEqualTo(404);
         assertThat(body(request("GET", "/actuator/health", null, null), 200).get("status").asText()).isEqualTo("UP");
-        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(31);
+        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(32);
     }
 
     @Test void pigHttpFlowUsesServerStateEventsAndIdempotency() throws Exception {
@@ -127,6 +137,74 @@ class HttpWebSocketIntegrationTest {
         var after = body(request("GET", roomPath + "/state", host, null), 200).at("/gameSession/gameState");
         assertThat(after.get("lastDiceValue").asInt()).isBetween(1, 6);
         assertThat(after.get("players").size()).isEqualTo(2);
+    }
+
+    @Test void toothHttpFlowHidesBombAndPublishesServerResults() throws Exception {
+        String host = client();
+        var created = body(request("POST", "/api/rooms", host, playerBody("방장")), 201);
+        long room = created.at("/room/roomId").asLong();
+        long hostId = created.at("/me/playerId").asLong();
+        String guest = client();
+        long guestId = body(request("POST", "/api/rooms/" + room + "/players", guest, playerBody("손님")), 201)
+            .get("playerId").asLong();
+        var listener = new Listener(); connect(room, host, listener);
+        String roomPath = "/api/rooms/" + room;
+        long session = body(request("POST", roomPath + "/game-sessions", host,
+            "{\"gameType\":\"TOOTH\",\"config\":{}}"), 201).get("gameSessionId").asLong();
+        String gamePath = roomPath + "/game-sessions/" + session;
+        assertThat(request("POST", gamePath + "/start", host, null).statusCode()).isEqualTo(204);
+
+        int selectedTooth = 0;
+        String selectedKey = null;
+        JsonNode result = null;
+        for (int toothId = 1; toothId <= 24; toothId++) {
+            var before = body(request("GET", roomPath + "/state", host, null), 200)
+                .at("/gameSession/gameState");
+            assertThat(before.has("bombToothId")).isFalse();
+            assertThat(before.toString()).doesNotContain("BOMB");
+            long current = before.get("currentTurnPlayerId").asLong();
+            String actor = current == hostId ? host : guest;
+            assertThat(current).isIn(hostId, guestId);
+            selectedKey = "tooth-" + toothId;
+            result = body(toothAction(gamePath + "/tooth/selections", actor, selectedKey, toothId), 200);
+            selectedTooth = toothId;
+            listener.awaitType("TOOTH_SELECTED");
+            if ("BOMB".equals(result.get("outcome").asText())) break;
+            assertThat(result.get("nextCurrentTurnPlayerId").isNull()).isFalse();
+        }
+
+        assertThat(result).isNotNull();
+        assertThat(result.get("outcome").asText()).isEqualTo("BOMB");
+        assertThat(result.get("nextCurrentTurnPlayerId").isNull()).isTrue();
+        listener.awaitType("GAME_FINISHED");
+        var finished = body(request("GET", roomPath + "/state", host, null), 200)
+            .at("/gameSession/gameState");
+        assertThat(finished.get("phase").asText()).isEqualTo("FINISHED");
+        assertThat(finished.at("/result/bombToothId").asInt()).isEqualTo(selectedTooth);
+        assertThat(finished.at("/result/loserPlayer/playerId").asLong()).isEqualTo(result.get("playerId").asLong());
+        assertThat(finished.has("rankings")).isFalse();
+        assertThat(finished.has("winnerPlayer")).isFalse();
+
+        String loserClient = result.get("playerId").asLong() == hostId ? host : guest;
+        var retry = body(toothAction(gamePath + "/tooth/selections", loserClient, selectedKey, selectedTooth), 200);
+        assertThat(retry).isEqualTo(result);
+        assertThat(String.join("\n", listener.received)).doesNotContain("bombToothId");
+
+        long replay = body(request("POST", roomPath + "/game-sessions", host,
+            "{\"gameType\":\"TOOTH\",\"config\":{}}"), 201).get("gameSessionId").asLong();
+        assertThat(replay).isNotEqualTo(session);
+        assertThat(request("POST", roomPath + "/game-sessions/" + replay + "/start", host, null).statusCode()).isEqualTo(204);
+        var replayState = body(request("GET", roomPath + "/state", host, null), 200)
+            .at("/gameSession/gameState");
+        assertThat(replayState.get("remainingToothCount").asInt()).isEqualTo(24);
+        assertThat(replayState.get("lastSelection").isNull()).isTrue();
+        assertThat(replayState.has("bombToothId")).isFalse();
+
+        assertThat(request("DELETE", roomPath + "/players/me", guest, null).statusCode()).isEqualTo(204);
+        var cancelled = body(request("GET", roomPath + "/state", host, null), 200)
+            .at("/gameSession/gameState");
+        assertThat(cancelled.get("phase").asText()).isEqualTo("CANCELLED");
+        assertThat(cancelled.get("reason").asText()).isEqualTo("PLAYER_LEFT");
     }
 
     @Test void hostCanReturnEveryPlayerToLobby() throws Exception {
