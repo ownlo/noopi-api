@@ -16,12 +16,11 @@ public class PigStateProjection {
         state.put("targetScore", TARGET_SCORE);
         state.put("currentPlayerId", game.phase == Phase.PLAYING ? game.currentPlayer() : null);
         state.put("turnScore", game.turnScore);
-        state.put("availableDiceValues", List.copyOf(game.availableDiceValues));
-        state.put("removedDiceValues", List.copyOf(game.removedDiceValues));
+        state.put("successfulRollCount", game.successfulRollCount);
         state.put("lastDiceValue", game.lastDiceValue);
         state.put("lastTurnOutcome", game.lastTurnOutcome == null ? null : game.lastTurnOutcome.name());
         state.put("lostTurnScore", game.lostTurnScore);
-        state.put("bustProbability", game.availableDiceValues.isEmpty() ? 0.0 : 1.0 / game.availableDiceValues.size());
+        state.put("bustProbability", game.phase == Phase.PLAYING ? game.bustProbability() : null);
         state.put("players", game.players.values().stream().map(player -> {
             Map<String, Object> value = new LinkedHashMap<>();
             var participant = room.session.participants().get(player.playerId);

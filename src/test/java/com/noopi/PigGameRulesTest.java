@@ -16,7 +16,7 @@ import static com.noopi.game.pig.PigGameRuntime.*;
 class PigGameRulesTest {
     static class Dice extends Random {
         final Queue<Integer> indexes = new ArrayDeque<>();
-        void index(int value) { indexes.add(value); }
+        void indexes(int... values) { Arrays.stream(values).forEach(indexes::add); }
         @Override public int nextInt(int bound) {
             int value = indexes.remove();
             assertThat(value).isLessThan(bound);
@@ -49,8 +49,8 @@ class PigGameRulesTest {
     }
     PigGameRuntime game() { return (PigGameRuntime) room.session.game; }
     void start() { store.inRoom(room.id, value -> { service.start(value); return null; }); }
-    void roll(long player, String key, int index) {
-        store.inRoom(room.id, value -> { dice.index(index); service.roll(value, player, key); return null; });
+    void roll(long player, String key, int... indexes) {
+        store.inRoom(room.id, value -> { dice.indexes(indexes); service.roll(value, player, key); return null; });
     }
     void stop(long player, String key) {
         store.inRoom(room.id, value -> { service.stop(value, player, key); return null; });
@@ -68,34 +68,57 @@ class PigGameRulesTest {
         error(TOO_MANY_PLAYERS, this::start);
     }
 
-    @Test void successfulRollRemovesNumberAndRaisesBustProbability() {
+    @Test void successfulRollCanRepeatNumberAndRaisesBustProbability() {
         start(); long actor = game().currentPlayer();
-        roll(actor, "roll-1", 4); // [1,2,3,4,5,6] -> 5
-        assertThat(game().turnScore).isEqualTo(5);
-        assertThat(game().availableDiceValues).containsExactly(1, 2, 3, 4, 6);
-        assertThat(game().removedDiceValues).containsExactly(5);
-        assertThat(projection.project(room, actor)).containsEntry("bustProbability", 0.2);
+        roll(actor, "roll-1", 99, 3); // success -> 5
+        roll(actor, "roll-2", 99, 3); // same result can repeat
+        assertThat(game().turnScore).isEqualTo(10);
+        assertThat(game().successfulRollCount).isEqualTo(2);
+        assertThat(projection.project(room, actor)).containsEntry("successfulRollCount", 2);
+        assertThat(projection.project(room, actor)).containsEntry("bustProbability", 0.4);
+        assertThat(projection.project(room, actor)).doesNotContainKeys("availableDiceValues", "removedDiceValues");
         assertThat(projection.project(room, actor).get("allowedActions")).isEqualTo(List.of("ROLL", "STOP"));
         assertThat(projection.project(room, 2L).get("allowedActions")).isEqualTo(List.of());
     }
 
+    @Test void bustProbabilityRisesToNinetyPercentAndStaysThere() {
+        start(); long actor = game().currentPlayer();
+        for (int count = 1; count <= 8; count++) {
+            roll(actor, "roll-" + count, 99, 4); // success -> 6
+            assertThat(projection.project(room, actor)).containsEntry(
+                "bustProbability", Math.min(20 + count * 10, 90) / 100.0);
+        }
+        assertThat(game().turnScore).isEqualTo(48);
+        assertThat(game().successfulRollCount).isEqualTo(8);
+        roll(actor, "bust", 0);
+        assertThat(game().lostTurnScore).isEqualTo(48);
+        assertThat(game().successfulRollCount).isZero();
+    }
+
+    @Test void initialBustProbabilityIsTwentyPercent() {
+        start(); long actor = game().currentPlayer();
+        assertThat(game().turnScore).isZero();
+        assertThat(projection.project(room, actor)).containsEntry("bustProbability", 0.2);
+    }
+
     @Test void rollingOneLosesOnlyTurnScoreAndAdvances() {
         start(); long actor = game().currentPlayer();
-        roll(actor, "roll-1", 3); // 4
-        roll(actor, "roll-2", 0); // 1
+        roll(actor, "roll-1", 99, 2); // success -> 4
+        roll(actor, "roll-2", 0); // bust -> 1
         assertThat(game().player(actor).totalScore).isZero();
         assertThat(game().turnScore).isZero();
         assertThat(game().lostTurnScore).isEqualTo(4);
         assertThat(game().lastTurnOutcome).isEqualTo(TurnOutcome.BUSTED);
         assertThat(game().currentPlayer()).isNotEqualTo(actor);
-        assertThat(game().availableDiceValues).containsExactly(1, 2, 3, 4, 5, 6);
+        assertThat(game().successfulRollCount).isZero();
+        assertThat(projection.project(room, game().currentPlayer())).containsEntry("bustProbability", 0.2);
         assertThat(events.types).endsWith("PIG_ROLL_RESOLVED", "PIG_TURN_CHANGED");
     }
 
     @Test void stopBanksScoreAndDuplicateOrWrongPlayerActionsFail() {
         start(); long actor = game().currentPlayer(); long other = actor == 1 ? 2 : 1;
         error(NOT_CURRENT_PLAYER, () -> service.roll(room, other, "wrong"));
-        roll(actor, "roll-1", 2); // 3
+        roll(actor, "roll-1", 99, 1); // success -> 3
         error(DUPLICATE_ACTION, () -> service.stop(room, actor, "roll-1"));
         stop(actor, "stop-1");
         assertThat(game().player(actor).totalScore).isEqualTo(3);
@@ -108,14 +131,14 @@ class PigGameRulesTest {
         start();
         long first = game().currentPlayer();
         game().player(first).totalScore = 49;
-        roll(first, "first-roll", 1); // 2 -> 51
+        roll(first, "first-roll", 99, 0); // success -> 2 -> 51
         stop(first, "first-stop");
         assertThat(game().player(first).rank).isEqualTo(1);
         assertThat(game().currentPlayer()).isNotEqualTo(first);
 
         long second = game().currentPlayer();
         game().player(second).totalScore = 55;
-        roll(second, "second-roll", 1); // 2 -> 57
+        roll(second, "second-roll", 99, 0); // success -> 2 -> 57
         stop(second, "second-stop");
 
         long last = game().finishOrder.get(2);

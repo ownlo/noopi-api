@@ -37,7 +37,9 @@ public class PigGameService {
     public void roll(RoomRuntime room, long playerId, String actionKey) {
         var game = requireAction(room, playerId, actionKey);
         game.processedActionKeys.add(actionKey);
-        int diceValue = game.availableDiceValues.get(random.nextInt(game.availableDiceValues.size()));
+        int diceValue = random.nextInt(100) < game.bustProbabilityPercent()
+            ? 1
+            : 2 + random.nextInt(5);
         game.lastDiceValue = diceValue;
         game.lastTurnOutcome = null;
         game.lostTurnScore = 0;
@@ -51,8 +53,7 @@ public class PigGameService {
             return;
         }
         game.turnScore += diceValue;
-        game.availableDiceValues.remove(Integer.valueOf(diceValue));
-        game.removedDiceValues.add(diceValue);
+        game.successfulRollCount++;
         events.game(room, "PIG_ROLL_RESOLVED", Map.of(
             "playerId", playerId, "diceValue", diceValue, "busted", false));
     }
@@ -104,8 +105,7 @@ public class PigGameService {
         finishPlayer(room, playing.getFirst());
         game.phase = Phase.FINISHED;
         room.session.status = GameSessionRuntime.Status.FINISHED;
-        game.availableDiceValues.clear();
-        game.removedDiceValues.clear();
+        game.successfulRollCount = 0;
         events.game(room, "GAME_FINISHED", Map.of());
         return true;
     }
@@ -127,9 +127,7 @@ public class PigGameService {
     }
     private static void resetTurnValues(PigGameRuntime game) {
         game.turnScore = 0;
-        game.availableDiceValues.clear();
-        game.availableDiceValues.addAll(List.of(1, 2, 3, 4, 5, 6));
-        game.removedDiceValues.clear();
+        game.successfulRollCount = 0;
     }
     private PigGameRuntime game(RoomRuntime room) { return (PigGameRuntime) room.session.game; }
 }

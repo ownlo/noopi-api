@@ -110,7 +110,10 @@ class HttpWebSocketIntegrationTest {
 
         var before = body(request("GET", roomPath + "/state", host, null), 200).at("/gameSession/gameState");
         assertThat(before.get("targetScore").asInt()).isEqualTo(50);
-        assertThat(before.get("availableDiceValues").size()).isEqualTo(6);
+        assertThat(before.get("successfulRollCount").asInt()).isZero();
+        assertThat(before.get("bustProbability").asDouble()).isEqualTo(0.2);
+        assertThat(before.has("availableDiceValues")).isFalse();
+        assertThat(before.has("removedDiceValues")).isFalse();
         long current = before.get("currentPlayerId").asLong();
         String actor = current == hostId ? host : guest;
         assertThat(current).isIn(hostId, guestId);

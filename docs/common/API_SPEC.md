@@ -2627,12 +2627,11 @@ GameSession을 `FINISHED`로 변경하여 전체 순위를 반환한다. 팀전�
   "targetScore": 50,
   "currentPlayerId": 12,
   "turnScore": 8,
-  "availableDiceValues": [1, 2, 4, 6],
-  "removedDiceValues": [3, 5],
+  "successfulRollCount": 2,
   "lastDiceValue": 3,
   "lastTurnOutcome": null,
   "lostTurnScore": 0,
-  "bustProbability": 0.25,
+  "bustProbability": 0.4,
   "players": [
     { "playerId": 12, "nickname": "철수", "totalScore": 28, "status": "PLAYING", "rank": null },
     { "playerId": 13, "nickname": "누피", "totalScore": 54, "status": "FINISHED", "rank": 1 }
@@ -2641,7 +2640,7 @@ GameSession을 `FINISHED`로 변경하여 전체 순위를 반환한다. 팀전�
 }
 ```
 
-`bustProbability`는 서버가 `1 / availableDiceValues.length`로 계산한 `0`~`1` 비율이다. Client는 표시 형식만 변환한다. `BUSTED` 직후에는 `lastTurnOutcome = "BUSTED"`와 잃은 점수인 `lostTurnScore`를 제공한다.
+`successfulRollCount`는 현재 턴에서 `2`~`6`이 나온 횟수다. `bustProbability`는 서버가 `min(0.2 + successfulRollCount * 0.1, 0.9)`로 확정한 현재 던지기의 `1` 발생 확률이며 `0`~`1` 비율로 제공한다. Client는 확률을 계산하지 않고 표시 형식만 변환한다. `BUSTED` 직후에는 `lastTurnOutcome = "BUSTED"`와 잃은 점수인 `lostTurnScore`를 제공한다.
 
 GameSession 생성 요청은 다음과 같다.
 
@@ -2652,7 +2651,7 @@ GameSession 생성 요청은 다음과 같다.
 }
 ```
 
-피그는 2~6명 개인전이며 설정 가능한 항목이 없다. 목표 점수, 주사위 면, 숫자 제거 규칙을 config로 보내면 `INVALID_GAME_CONFIG`를 반환한다. 시작 시 서버는 참가 인원 2~6명을 검증하고 턴 순서, Player 상태, 첫 턴을 초기화한다.
+피그는 2~6명 개인전이며 설정 가능한 항목이 없다. 목표 점수, 주사위 면 또는 `1` 발생 확률 규칙을 config로 보내면 `INVALID_GAME_CONFIG`를 반환한다. 시작 시 서버는 참가 인원 2~6명을 검증하고 턴 순서, Player 상태, 첫 턴을 초기화한다.
 
 ## PIG 주사위 던지기
 
@@ -2665,7 +2664,7 @@ X-Client-Id: <clientId>
 Idempotency-Key: <unique-request-id>
 ```
 
-Request body 없음. Response는 `204 No Content`다. 서버는 현재 Player, `PLAYING` phase, `ROLL` 허용 여부, idempotency key를 검증한 뒤 주사위 결과와 점수·제거 숫자·다음 턴을 원자적으로 확정한다.
+Request body 없음. Response는 `204 No Content`다. 서버는 현재 Player, `PLAYING` phase, `ROLL` 허용 여부, idempotency key를 검증한 뒤 현재 `bustProbability`에 따른 주사위 결과와 점수·성공 횟수·다음 확률·다음 턴을 원자적으로 확정한다. `1`이 아니면 `2`~`6` 중 하나를 동일한 확률로 확정하며 같은 숫자가 한 턴에 반복될 수 있다.
 
 ## PIG 멈추기
 
@@ -2700,8 +2699,6 @@ DUPLICATE_ACTION
   "targetScore": 50,
   "currentPlayerId": null,
   "turnScore": 0,
-  "availableDiceValues": [],
-  "removedDiceValues": [],
   "rankings": [
     { "rank": 1, "playerId": 13, "nickname": "누피", "totalScore": 54 },
     { "rank": 2, "playerId": 12, "nickname": "철수", "totalScore": 51 },
@@ -2742,7 +2739,7 @@ DUPLICATE_ACTION
 }
 ```
 
-`PIG_TURN_CHANGED.reason`은 `STOPPED` 또는 `BUSTED`다. 모든 이벤트는 상태 갱신 신호이며 Client는 수신 후 `room-state` Query를 invalidate한다. 이벤트를 놓쳐도 `/state`로 현재 점수, 턴, 제거 숫자, 순위와 종료 상태를 완전히 복구할 수 있어야 한다.
+`PIG_TURN_CHANGED.reason`은 `STOPPED` 또는 `BUSTED`다. 모든 이벤트는 상태 갱신 신호이며 Client는 수신 후 `room-state` Query를 invalidate한다. 이벤트를 놓쳐도 `/state`로 현재 점수, 턴, 성공 횟수, `1` 발생 확률, 순위와 종료 상태를 완전히 복구할 수 있어야 한다.
 
 ------------------------------------------------------------------------
 

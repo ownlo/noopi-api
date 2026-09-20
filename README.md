@@ -10,7 +10,7 @@ Java 26 · Spring Boot 3.5 · Spring MVC/WebSocket · JPA · MySQL 8 · Flyway.
 이동권, 지름길, 업기/잡기/완주와 승리를 서버 Runtime에서 처리한다.
 
 - [윷놀이 규칙](docs/common/games/YUT_GAME_SPEC.md): 개인전/팀전, 턴, 지름길, 업기/잡기/완주.
-- [피그 규칙](docs/common/games/PIG_GAME_SPEC.md): 2~6명 개인전, 숫자 제거, 점수·순위·종료.
+- [피그 규칙](docs/common/games/PIG_GAME_SPEC.md): 2~6명 개인전, 성공별 위험도 증가, 점수·순위·종료.
 - [API 계약](docs/common/API_SPEC.md): 윷놀이 행동 API, 개인화 상태, 이벤트와 오류.
 - [백엔드 구조](docs/BACKEND_ARCHITECTURE.md): Runtime/동시성/Projection 구현 목표.
 - [구현 노트](docs/IMPLEMENTATION_NOTES.md): 구현 체크리스트, 미확정 보드 ID 및 연동 차이.
