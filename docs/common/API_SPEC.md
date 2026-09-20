@@ -2698,7 +2698,7 @@ GameSession을 `FINISHED`로 변경하여 전체 순위를 반환한다. 팀전�
   "lastDiceValue": 3,
   "lastTurnOutcome": null,
   "lostTurnScore": 0,
-  "bustProbability": 0.4,
+  "bustProbability": 0.3,
   "players": [
     { "playerId": 12, "nickname": "철수", "totalScore": 28, "status": "PLAYING", "rank": null },
     { "playerId": 13, "nickname": "누피", "totalScore": 54, "status": "FINISHED", "rank": 1 }
@@ -2707,7 +2707,7 @@ GameSession을 `FINISHED`로 변경하여 전체 순위를 반환한다. 팀전�
 }
 ```
 
-`successfulRollCount`는 현재 턴에서 `2`~`6`이 나온 횟수다. `bustProbability`는 서버가 `min(0.2 + successfulRollCount * 0.1, 0.9)`로 확정한 현재 던지기의 `1` 발생 확률이며 `0`~`1` 비율로 제공한다. Client는 확률을 계산하지 않고 표시 형식만 변환한다. `BUSTED` 직후에는 `lastTurnOutcome = "BUSTED"`와 잃은 점수인 `lostTurnScore`를 제공한다.
+`successfulRollCount`는 현재 턴에서 `2`~`6`이 나온 횟수다. `bustProbability`는 서버가 `min(0.1 + successfulRollCount * 0.1, 0.9)`로 확정한 현재 던지기의 `1` 발생 확률이며 `0`~`1` 비율로 제공한다. Client는 확률을 계산하지 않고 표시 형식만 변환하며 성공 횟수는 화면에 노출하지 않는다. `BUSTED` 직후에는 `lastTurnOutcome = "BUSTED"`와 잃은 점수인 `lostTurnScore`를 제공한다.
 
 GameSession 생성 요청은 다음과 같다.
 

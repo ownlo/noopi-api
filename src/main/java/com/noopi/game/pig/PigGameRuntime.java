@@ -8,7 +8,7 @@ import java.util.*;
 @JsonIgnoreType
 public final class PigGameRuntime implements GameRuntime {
     public static final int TARGET_SCORE = 50;
-    public static final int INITIAL_BUST_PERCENT = 20;
+    public static final int INITIAL_BUST_PERCENT = 10;
     public static final int BUST_INCREMENT_PERCENT = 10;
     public static final int MAX_BUST_PERCENT = 90;
     public enum Phase { READY, PLAYING, FINISHED, CANCELLED }

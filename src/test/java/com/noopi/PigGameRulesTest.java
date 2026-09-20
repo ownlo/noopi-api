@@ -75,7 +75,7 @@ class PigGameRulesTest {
         assertThat(game().turnScore).isEqualTo(10);
         assertThat(game().successfulRollCount).isEqualTo(2);
         assertThat(projection.project(room, actor)).containsEntry("successfulRollCount", 2);
-        assertThat(projection.project(room, actor)).containsEntry("bustProbability", 0.4);
+        assertThat(projection.project(room, actor)).containsEntry("bustProbability", 0.3);
         assertThat(projection.project(room, actor)).doesNotContainKeys("availableDiceValues", "removedDiceValues");
         assertThat(projection.project(room, actor).get("allowedActions")).isEqualTo(List.of("ROLL", "STOP"));
         assertThat(projection.project(room, 2L).get("allowedActions")).isEqualTo(List.of());
@@ -86,7 +86,7 @@ class PigGameRulesTest {
         for (int count = 1; count <= 8; count++) {
             roll(actor, "roll-" + count, 99, 4); // success -> 6
             assertThat(projection.project(room, actor)).containsEntry(
-                "bustProbability", Math.min(20 + count * 10, 90) / 100.0);
+                "bustProbability", Math.min(10 + count * 10, 90) / 100.0);
         }
         assertThat(game().turnScore).isEqualTo(48);
         assertThat(game().successfulRollCount).isEqualTo(8);
@@ -95,10 +95,10 @@ class PigGameRulesTest {
         assertThat(game().successfulRollCount).isZero();
     }
 
-    @Test void initialBustProbabilityIsTwentyPercent() {
+    @Test void initialBustProbabilityIsTenPercent() {
         start(); long actor = game().currentPlayer();
         assertThat(game().turnScore).isZero();
-        assertThat(projection.project(room, actor)).containsEntry("bustProbability", 0.2);
+        assertThat(projection.project(room, actor)).containsEntry("bustProbability", 0.1);
     }
 
     @Test void rollingOneLosesOnlyTurnScoreAndAdvances() {
@@ -111,7 +111,7 @@ class PigGameRulesTest {
         assertThat(game().lastTurnOutcome).isEqualTo(TurnOutcome.BUSTED);
         assertThat(game().currentPlayer()).isNotEqualTo(actor);
         assertThat(game().successfulRollCount).isZero();
-        assertThat(projection.project(room, game().currentPlayer())).containsEntry("bustProbability", 0.2);
+        assertThat(projection.project(room, game().currentPlayer())).containsEntry("bustProbability", 0.1);
         assertThat(events.types).endsWith("PIG_ROLL_RESOLVED", "PIG_TURN_CHANGED");
     }
 

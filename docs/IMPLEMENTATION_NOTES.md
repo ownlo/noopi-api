@@ -49,7 +49,7 @@ API가 `game/yut` Runtime·경로·서비스·Projection에 연결되어 있다.
 
 - [x] 카탈로그 및 `gameType = PIG`, 빈 config, 2~6명 검증.
 - [x] `game/pig` Runtime·Service·Projection을 다른 게임과 독립 구성.
-- [x] 첫 던지기 20%, 성공마다 10%p 증가, 최대 90%인 서버 확률 판정으로 변경.
+- [x] 첫 던지기 10%, 성공마다 10%p 증가, 최대 90%인 서버 확률 판정으로 변경.
 - [x] `1`이 아니면 `2`~`6`을 동일 확률로 판정하고 같은 숫자의 반복을 허용.
 - [x] 숫자 제거 상태를 없애고 `successfulRollCount`와 서버 확정 `bustProbability`를 Projection에 제공.
 - [x] 1 발생 시 턴 점수 소멸, 총점 유지, 다음 PLAYING Player 전환.
