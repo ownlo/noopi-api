@@ -144,23 +144,37 @@ class YutGameRulesTest {
         assertThat(victim.status).isEqualTo(PieceStatus.READY);
         assertThat(result.bonusThrowGranted()).isTrue();
     }
-    @Test void backDoFromStartFinishesTheWholeGroupAndEndsWhenOnlyOnePlayerRemains() {
+    @Test void backDoFromHomeRetracesTheActualRouteWithoutFinishing() {
         start();
-        long actor = current();
-        long lastPlayer = room.session.participants().keySet().stream().filter(player -> player != actor).findFirst().orElseThrow();
         Piece first = own(1), second = own(2);
         place(first, "OUTER_20", YutBoard.OUTER); place(second, "OUTER_20", YutBoard.OUTER);
+        first.history = second.history = new ArrayList<>(List.of(
+            new YutBoard.Position("OUTER_19", YutBoard.OUTER),
+            new YutBoard.Position("OUTER_20", YutBoard.OUTER)
+        ));
         first.group = second.group = List.of(first.id, second.id);
-        own(3).status = own(4).status = PieceStatus.FINISHED;
         token(rollBackDo().moveTokenId());
         var result = move(first);
-        assertThat(result.finished()).isTrue();
-        assertThat(first.status).isEqualTo(PieceStatus.FINISHED);
-        assertThat(second.status).isEqualTo(PieceStatus.FINISHED);
-        assertThat(room.session.status).isEqualTo(GameSessionRuntime.Status.FINISHED);
-        assertThat(game().finishOrder).containsExactly(actor, lastPlayer);
-        assertThat((List<?>) projection.project(room, actor).get("rankings")).hasSize(2);
-        error(GAME_SESSION_ALREADY_FINISHED, () -> service.throwYut(room, actor));
+        assertThat(result.finished()).isFalse();
+        assertThat(result.toNodeId()).isEqualTo("OUTER_19");
+        assertThat(first.status).isEqualTo(PieceStatus.ON_BOARD);
+        assertThat(second.status).isEqualTo(PieceStatus.ON_BOARD);
+        assertThat(first.nodeId).isEqualTo("OUTER_19");
+        assertThat(second.nodeId).isEqualTo("OUTER_19");
+        assertThat(room.session.status).isEqualTo(GameSessionRuntime.Status.PLAYING);
+    }
+
+    @Test void backDoFromHomeRetracesShortcutToCenterNine() {
+        Piece piece = new Piece("test", "1");
+        apply(piece, YutBoard.move(piece, 10, YutBoard.OUTER));
+        apply(piece, YutBoard.move(piece, 6, YutBoard.B));
+        assertThat(piece.nodeId).isEqualTo("OUTER_20");
+
+        var back = YutBoard.move(piece, -1, piece.route);
+
+        assertThat(back.finished()).isFalse();
+        assertThat(back.nodeId()).isEqualTo("CENTER_9");
+        assertThat(back.route()).isEqualTo(YutBoard.B);
     }
     @Test void finishedPlayerIsRemovedWithoutChangingTheRemainingTurnOrder() {
         room.players.put(3L, new PlayerRuntime(3, "third", "세번째", "MALE"));

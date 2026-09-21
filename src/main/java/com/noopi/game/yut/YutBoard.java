@@ -60,7 +60,6 @@ public final class YutBoard {
     }
     private static Destination moveBack(YutGameRuntime.Piece piece) {
         if (piece.status != ON_BOARD || piece.nodeId == null) throw new IllegalArgumentException("Back-do requires an on-board piece");
-        if ("OUTER_20".equals(piece.nodeId)) return new Destination(null, OUTER, List.of());
         if ("OUTER_1".equals(piece.nodeId)) {
             return new Destination("OUTER_20", OUTER, List.of(new Position("OUTER_20", OUTER)));
         }
