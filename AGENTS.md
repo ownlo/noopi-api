@@ -124,6 +124,9 @@ Player nickname은 trim 후 1~5글자다. 같은 Room에서 중복 불가.
 
 gender는 `MALE`, `FEMALE`만 지원한다.
 
+활성 GameSession이 없는 대기 로비에서는 방장만 본인을 제외한 특정 Player를
+강제퇴장시킬 수 있다. 연결 상태와 관계없이 제거하며 재참가는 금지하지 않는다.
+
 ## 10. Backend가 Source of Truth
 Backend가 다음을 직접 결정/검증한다.
 - Room/Host 상태

@@ -245,6 +245,8 @@ REALTIME_SPEC의 ‘실제 투표 내용’ 문구도 후보별 최종 득표수
 
 ## 운영 구현 세부사항
 
+- 로비 강제퇴장: 활성 GameSession이 없을 때 방장만 비방장 Player를 제거한다.
+  `PLAYER_LEFT`를 `KICKED` 사유로 발행한 뒤 대상 연결을 종료하며 재참가는 허용한다.
 - 명시적 방장 탈퇴: `ROOM_CLOSED`를 `HOST_LEFT` 사유로 발행하고 Room 종료.
 - 방장 미접속: 자동 승계/종료하지 않으며 재접속을 기다린다.
 - 운영 기본값: disconnect grace 2분, Room TTL 12시간, cleanup 60초, 최근 제시어 10개.

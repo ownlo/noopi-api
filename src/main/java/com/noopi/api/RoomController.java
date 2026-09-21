@@ -24,6 +24,9 @@ public class RoomController {
     }
     @DeleteMapping("/{roomId}/players/me") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void leave(@PathVariable long roomId, @RequestHeader("X-Client-Id") String client) { app.leave(roomId, client); }
+    @DeleteMapping("/{roomId}/players/{playerId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void kick(@PathVariable long roomId, @PathVariable long playerId,
+                     @RequestHeader("X-Client-Id") String client) { app.kick(roomId, client, playerId); }
     @PostMapping("/{roomId}/lobby") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void returnToLobby(@PathVariable long roomId, @RequestHeader("X-Client-Id") String client) { app.returnToLobby(roomId, client); }
     @GetMapping("/{roomId}/state")

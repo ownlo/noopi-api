@@ -346,6 +346,47 @@ NOT_ROOM_HOST
 
 ------------------------------------------------------------------------
 
+## 8.2 로비 Player 강제퇴장
+
+활성 GameSession이 없는 Room 대기 로비에서 방장이 특정 일반 Player를
+강제퇴장시킬 때 사용한다.
+
+``` http
+DELETE /api/rooms/{roomId}/players/{playerId}
+```
+
+Header:
+
+``` text
+X-Client-Id: <clientId>
+```
+
+Response:
+
+``` text
+204 No Content
+```
+
+방장 자신은 강제퇴장 대상으로 지정할 수 없다. 대상의 연결 상태와 관계없이
+Room의 Player 목록에서 제거한다. 강제퇴장은 재참가를 금지하지 않으며, 대상은
+Room이 참가 가능한 상태라면 이후 다시 참가할 수 있다.
+
+서버는 `PLAYER_LEFT` 이벤트를 `KICKED` 사유와 함께 전송한 뒤 대상 Player의
+WebSocket 연결을 종료한다.
+
+주요 오류:
+
+``` text
+ROOM_NOT_FOUND
+PLAYER_NOT_IN_ROOM
+PLAYER_NOT_FOUND
+NOT_ROOM_HOST
+ROOM_HOST_CANNOT_BE_KICKED
+ACTIVE_GAME_SESSION_EXISTS
+```
+
+------------------------------------------------------------------------
+
 # State API
 
 ## 9. 현재 Room/Game 상태 조회
@@ -1933,14 +1974,21 @@ WebSocket은 상태 저장소가 아니다. 연결 직후 또는 재접속 후�
 
 ### PLAYER_LEFT
 
+Player가 직접 나가거나 방장에 의해 강제퇴장될 때 전달한다. `reason`은
+강제퇴장 시 `KICKED`이며, 일반 나가기에서는 생략할 수 있다.
+
 ``` json
 {
   "type": "PLAYER_LEFT",
   "payload": {
-    "playerId": 16
+    "playerId": 16,
+    "reason": "KICKED"
   }
 }
 ```
+
+수신 이벤트의 `playerId`가 현재 Player이고 `reason`이 `KICKED`이면 저장된
+마지막 Room 정보를 제거하고 홈 화면으로 이동한다.
 
 ### HOST_CHANGED
 
@@ -3063,10 +3111,12 @@ WebSocket 재연결
 ROOM_NOT_FOUND
 ROOM_CLOSED
 PLAYER_NOT_IN_ROOM
+PLAYER_NOT_FOUND
 NICKNAME_ALREADY_EXISTS
 INVALID_NICKNAME
 INVALID_GENDER
 NOT_ROOM_HOST
+ROOM_HOST_CANNOT_BE_KICKED
 ```
 
 ### GameSession
@@ -3187,6 +3237,9 @@ Frontend는 다음 규칙을 따른다.
   `POST`        `/api/rooms/{roomId}/players`                                                    Room 참가
 
   `DELETE`      `/api/rooms/{roomId}/players/me`                                                 Room 나가기
+
+  `DELETE`      `/api/rooms/{roomId}/players/{playerId}`                                         로비 Player
+                                                                                                 강제퇴장
 
   `POST`        `/api/rooms/{roomId}/lobby`                                                      전체 참가자를
                                                                                                  대기 로비로 이동

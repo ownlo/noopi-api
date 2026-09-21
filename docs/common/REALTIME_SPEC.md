@@ -70,6 +70,10 @@ Player를 연결 종료 상태로 변경하고 일정 시간 동안 재접속을
 
 구체적인 이벤트 payload는 `API_SPEC.md`에서 정의한다.
 
+`PLAYER_LEFT`는 Player의 명시적 나가기와 방장의 로비 강제퇴장을 모두 알린다.
+강제퇴장 대상 Client는 `KICKED` 사유를 확인하면 마지막 Room 정보를 제거하고
+홈 화면으로 이동한다. 서버는 이벤트 전송 후 대상의 WebSocket을 종료한다.
+
 ## 9. 라이어 게임 대표 이벤트
 
 -   `ROLE_CHECKED`

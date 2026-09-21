@@ -6,6 +6,8 @@ public enum ErrorCode {
     ROOM_NOT_FOUND(404, "방을 찾을 수 없습니다."),
     ROOM_CLOSED(409, "종료된 방입니다."),
     PLAYER_NOT_IN_ROOM(403, "방에 참가한 Player가 아닙니다."),
+    PLAYER_NOT_FOUND(404, "Player를 찾을 수 없습니다."),
+    ROOM_HOST_CANNOT_BE_KICKED(422, "방장은 강제퇴장시킬 수 없습니다."),
     NICKNAME_ALREADY_EXISTS(409, "이미 사용 중인 닉네임입니다."),
     INVALID_NICKNAME(400, "닉네임은 앞뒤 공백 제거 후 1~5글자여야 합니다."),
     INVALID_GENDER(400, "성별은 MALE 또는 FEMALE이어야 합니다."),

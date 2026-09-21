@@ -29,8 +29,9 @@ class GameRulesTest {
         record Sent(String type, Map<String, Object> payload) {}
         List<Sent> sent = new CopyOnWriteArrayList<>();
         Set<Long> closed = new HashSet<>();
+        Set<Long> closedPlayers = new HashSet<>();
         public void publish(RoomRuntime r, String type, Long session, Map<String, Object> data) { sent.add(new Sent(type, Map.copyOf(data))); }
-        public void closePlayer(long r, long p) {}
+        public void closePlayer(long r, long p) { closedPlayers.add(p); }
         public void closeRoom(long r) { closed.add(r); }
         long count(String type) { return sent.stream().filter(e -> e.type.equals(type)).count(); }
     }
@@ -88,6 +89,30 @@ class GameRulesTest {
         var joined = app.join(room, "guest", "참가자", "FEMALE");
         assertThat(joined.nickname()).isEqualTo("참가자");
         assertThat(store.<Integer>inRoom(room, r -> r.players.size())).isEqualTo(2);
+    }
+
+    @Test void hostCanKickGuestOnlyWhileRoomIsInLobbyAndGuestCanRejoin() {
+        createPlayers(3);
+        long guestId = ids.get(1);
+
+        error(NOT_ROOM_HOST, () -> app.kick(room, "c1", ids.get(2)));
+        error(ROOM_HOST_CANNOT_BE_KICKED, () -> app.kick(room, "c0", ids.getFirst()));
+
+        app.kick(room, "c0", guestId);
+
+        assertThat(app.state(room, "c0").players()).extracting(Responses.RoomPlayer::playerId).doesNotContain(guestId);
+        error(PLAYER_NOT_IN_ROOM, () -> app.state(room, "c1"));
+        assertThat(events.closedPlayers).contains(guestId);
+        assertThat(events.sent).anySatisfy(event -> {
+            assertThat(event.type()).isEqualTo("PLAYER_LEFT");
+            assertThat(event.payload()).containsEntry("playerId", guestId).containsEntry("reason", "KICKED");
+        });
+
+        var rejoined = app.join(room, "c1", "참가1", "FEMALE");
+        assertThat(rejoined.playerId()).isNotEqualTo(guestId);
+
+        app.createSession(room, "c0", "LIAR", "RANDOM");
+        error(ACTIVE_GAME_SESSION_EXISTS, () -> app.kick(room, "c0", rejoined.playerId()));
     }
 
     @Test void roomCodeIsExactlySixDigitsAndKeepsLeadingZeroes() {

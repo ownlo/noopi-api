@@ -129,6 +129,18 @@ public class GameApplication {
             return null;
         });
     }
+    public void kick(long roomId, String clientId, long playerId) {
+        rooms.inRoom(roomId, r -> {
+            r.requireHost(r.player(clientId));
+            ACTIVE_GAME_SESSION_EXISTS.require(r.session == null);
+            PLAYER_NOT_FOUND.require(r.players.containsKey(playerId));
+            ROOM_HOST_CANNOT_BE_KICKED.require(playerId != r.hostPlayerId);
+            r.players.remove(playerId);
+            events.publish(r, "PLAYER_LEFT", null, Map.of("playerId", playerId, "reason", "KICKED"));
+            events.closePlayer(r.id, playerId);
+            return null;
+        });
+    }
     public Responses.State state(long roomId, String clientId) {
         return rooms.inRoom(roomId, r -> {
             var me = r.player(clientId);

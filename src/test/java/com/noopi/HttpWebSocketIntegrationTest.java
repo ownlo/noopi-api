@@ -100,7 +100,34 @@ class HttpWebSocketIntegrationTest {
         assertThat(request("GET", "/api/rooms/" + room + "/state", null, null).statusCode()).isEqualTo(403);
         assertThat(request("GET", "/api/games/liar/keywords", null, null).statusCode()).isEqualTo(404);
         assertThat(body(request("GET", "/actuator/health", null, null), 200).get("status").asText()).isEqualTo("UP");
-        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(32);
+        assertThat(body(request("GET", "/v3/api-docs", null, null), 200).get("paths").size()).isEqualTo(33);
+    }
+
+    @Test void hostCanKickLobbyGuestThroughHttpAndGuestCanRejoin() throws Exception {
+        String host = client();
+        var created = body(request("POST", "/api/rooms", host, playerBody("방장")), 201);
+        long room = created.at("/room/roomId").asLong();
+        long hostId = created.at("/me/playerId").asLong();
+        String guest = client();
+        long guestId = body(request("POST", "/api/rooms/" + room + "/players", guest, playerBody("손님")), 201)
+            .get("playerId").asLong();
+        String kickPath = "/api/rooms/" + room + "/players/";
+
+        assertThat(body(request("DELETE", kickPath + hostId, guest, null), 403).get("code").asText())
+            .isEqualTo("NOT_ROOM_HOST");
+        assertThat(body(request("DELETE", kickPath + hostId, host, null), 422).get("code").asText())
+            .isEqualTo("ROOM_HOST_CANNOT_BE_KICKED");
+        assertThat(request("DELETE", kickPath + guestId, host, null).statusCode()).isEqualTo(204);
+        assertThat(body(request("GET", "/api/rooms/" + room + "/state", guest, null), 403).get("code").asText())
+            .isEqualTo("PLAYER_NOT_IN_ROOM");
+
+        long rejoinedId = body(request("POST", "/api/rooms/" + room + "/players", guest, playerBody("손님")), 201)
+            .get("playerId").asLong();
+        assertThat(rejoinedId).isNotEqualTo(guestId);
+        body(request("POST", "/api/rooms/" + room + "/game-sessions", host,
+            "{\"gameType\":\"PIG\",\"config\":{}}"), 201);
+        assertThat(body(request("DELETE", kickPath + rejoinedId, host, null), 409).get("code").asText())
+            .isEqualTo("ACTIVE_GAME_SESSION_EXISTS");
     }
 
     @Test void pigHttpFlowUsesServerStateEventsAndIdempotency() throws Exception {
