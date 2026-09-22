@@ -1,5 +1,21 @@
 # MVP 구현 결정과 SPEC 정합성
 
+## 2026-09-22 게임 카탈로그 카테고리
+
+방장이 게임 선택 화면에서 카테고리별 게임 목록을 볼 수 있도록 공통 계약을
+확장했다. 라이어 제시어 카테고리와 구분하기 위해 API 이름은
+`catalogCategories`, 게임별 소속 필드는 `catalogCategoryCodes`로 확정했다.
+
+- [x] `GET /api/games`에 카테고리 정의와 게임별 복수 소속 반환
+- [x] 활성 게임의 최소 1개 카테고리 소속과 참조 코드 유효성 보장
+- [x] 초기 `MINI_GAME`, `PARTY_GAME`, `DEDUCTION`, `STRATEGY`, `LUCK`,
+  `INDIVIDUAL`, `TEAM` 분류 반영
+- [x] API 응답 통합 테스트 보강
+
+카탈로그 카테고리는 조회용 메타데이터다. Room/GameSession Runtime과 DB에
+저장하지 않으며 게임 생성 `config`로 전달하지 않는다. `ALL`은 Frontend 전용
+가상 필터다.
+
 ## 누피 콱! 구현/검증 체크리스트
 
 표시 이름은 `누피 콱!`, API 게임 타입은 `TOOTH`로 확정했다. 공통 규칙은

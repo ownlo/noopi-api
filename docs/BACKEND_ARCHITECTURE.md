@@ -144,6 +144,30 @@ Runtime 객체를 그대로 JSON으로 직렬화하지 않는다.
 
 게임 종료 전 다른 Player의 역할을 반환하지 않는다. 다른 Player의 `voter → target` 관계는 투표 종료 후와 게임 종료 후에도 반환하지 않는다.
 
+## 9-1. Game Catalog
+
+지원 게임 카탈로그는 게임 선택 UI가 사용하는 카테고리 정의와 각 게임의
+복수 카테고리 소속을 함께 제공한다. Backend가 카테고리 코드, 표시 이름,
+표시 순서와 소속 관계의 Source of Truth다.
+
+`GET /api/games`는 다음을 하나의 응답으로 반환한다.
+
+- `catalogCategories`: `code`, `name`, `order`
+- `games`: 기존 게임 정보와 `catalogCategoryCodes`
+
+활성 게임에는 하나 이상의 유효한 카테고리 코드를 지정한다. 하나의 게임이
+여러 카테고리에 속할 수 있으며, 동일 코드를 중복 지정하지 않는다. 카탈로그
+분류는 조회용 메타데이터이므로 Room Runtime이나 GameSession Runtime에
+복제하지 않고 게임 생성 `config`에도 포함하지 않는다.
+
+`ALL`은 Backend 카테고리로 만들지 않는다. Frontend가 전체 게임을 표시할 때
+사용하는 가상 필터다. 라이어 제시어 카테고리와 이름, 타입, 저장 경계를
+공유하지 않는다.
+
+초기 분류는 `MINI_GAME`, `PARTY_GAME`, `DEDUCTION`, `STRATEGY`, `LUCK`,
+`INDIVIDUAL`, `TEAM`이며 정확한 표시 이름과 게임 소속은
+`common/API_SPEC.md`를 따른다.
+
 ## 10. Liar Game Runtime
 라이어 게임은 정확히 한 명의 라이어를 가진다.
 

@@ -808,10 +808,48 @@ Response `200 OK`:
 
 ``` json
 {
+  "catalogCategories": [
+    {
+      "code": "MINI_GAME",
+      "name": "미니게임",
+      "order": 1
+    },
+    {
+      "code": "PARTY_GAME",
+      "name": "파티게임",
+      "order": 2
+    },
+    {
+      "code": "DEDUCTION",
+      "name": "추리",
+      "order": 3
+    },
+    {
+      "code": "STRATEGY",
+      "name": "전략",
+      "order": 4
+    },
+    {
+      "code": "LUCK",
+      "name": "운빨",
+      "order": 5
+    },
+    {
+      "code": "INDIVIDUAL",
+      "name": "개인전",
+      "order": 6
+    },
+    {
+      "code": "TEAM",
+      "name": "팀전",
+      "order": 7
+    }
+  ],
   "games": [
     {
       "gameType": "LIAR",
       "name": "라이어 게임",
+      "catalogCategoryCodes": ["PARTY_GAME", "DEDUCTION", "TEAM"],
       "minPlayers": 3,
       "maxPlayers": 12,
       "enabled": true
@@ -819,6 +857,7 @@ Response `200 OK`:
     {
       "gameType": "BLIND",
       "name": "블라인드 게임",
+      "catalogCategoryCodes": ["PARTY_GAME", "DEDUCTION", "INDIVIDUAL"],
       "minPlayers": 2,
       "maxPlayers": 2,
       "enabled": true
@@ -826,6 +865,7 @@ Response `200 OK`:
     {
       "gameType": "MAFIA",
       "name": "마피아 게임",
+      "catalogCategoryCodes": ["PARTY_GAME", "DEDUCTION", "TEAM"],
       "minPlayers": 4,
       "maxPlayers": 12,
       "enabled": true
@@ -833,6 +873,7 @@ Response `200 OK`:
     {
       "gameType": "YUT",
       "name": "윷놀이",
+      "catalogCategoryCodes": ["PARTY_GAME", "STRATEGY", "LUCK", "INDIVIDUAL", "TEAM"],
       "minPlayers": 2,
       "maxPlayers": 4,
       "enabled": true
@@ -840,6 +881,7 @@ Response `200 OK`:
     {
       "gameType": "PIG",
       "name": "피그",
+      "catalogCategoryCodes": ["MINI_GAME", "LUCK", "INDIVIDUAL"],
       "minPlayers": 2,
       "maxPlayers": 6,
       "enabled": true
@@ -847,6 +889,7 @@ Response `200 OK`:
     {
       "gameType": "TOOTH",
       "name": "누피 콱!",
+      "catalogCategoryCodes": ["MINI_GAME", "PARTY_GAME", "LUCK", "INDIVIDUAL"],
       "minPlayers": 2,
       "maxPlayers": 8,
       "enabled": true
@@ -854,6 +897,30 @@ Response `200 OK`:
   ]
 }
 ```
+
+`catalogCategories`는 게임 선택 화면에서 사용하는 카탈로그 탐색용
+메타데이터다. 라이어 게임의 제시어 `categoryCode`와는 서로 다른 개념이며,
+GameSession 생성 `config`에 전달하지 않는다.
+
+- 하나의 게임은 `catalogCategoryCodes`로 하나 이상의 카테고리에 속할 수 있다.
+- 활성화된 게임은 최소 하나의 카탈로그 카테고리에 속해야 한다.
+- `catalogCategoryCodes`의 각 값은 `catalogCategories.code`에 존재해야 한다.
+- 카테고리는 `order` 오름차순으로 표시하며, 같은 값이면 응답 순서를 유지한다.
+- 선택된 카테고리 안의 게임 순서는 `games` 응답 순서를 유지한다.
+- `ALL`은 서버 카테고리가 아니다. Frontend가 `전체` 필터를 가상으로 추가한다.
+- 알 수 없는 카테고리 코드를 Client가 임의의 이름으로 표시하지 않는다.
+
+초기 카테고리 소속은 다음과 같다.
+
+| 카테고리 | 게임 |
+| --- | --- |
+| `MINI_GAME` / 미니게임 | `PIG`, `TOOTH` |
+| `PARTY_GAME` / 파티게임 | `LIAR`, `BLIND`, `MAFIA`, `YUT`, `TOOTH` |
+| `DEDUCTION` / 추리 | `LIAR`, `BLIND`, `MAFIA` |
+| `STRATEGY` / 전략 | `YUT` |
+| `LUCK` / 운빨 | `YUT`, `PIG`, `TOOTH` |
+| `INDIVIDUAL` / 개인전 | `BLIND`, `YUT`, `PIG`, `TOOTH` |
+| `TEAM` / 팀전 | `LIAR`, `MAFIA`, `YUT` |
 
 ------------------------------------------------------------------------
 

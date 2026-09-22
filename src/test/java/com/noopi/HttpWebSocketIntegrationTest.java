@@ -72,20 +72,56 @@ class HttpWebSocketIntegrationTest {
         assertThat(categories.get(0).get("code").asText()).isEqualTo("RANDOM");
         assertThat(categories.get(0).get("virtual").asBoolean()).isTrue();
         assertThat(categories.size()).isEqualTo(4);
-        var games = body(request("GET", "/api/games", null, null), 200).get("games");
+        var catalog = body(request("GET", "/api/games", null, null), 200);
+        var catalogCategories = catalog.get("catalogCategories");
+        assertThat(catalogCategories).hasSize(7);
+        assertThat(catalogCategories.get(0).get("code").asText()).isEqualTo("MINI_GAME");
+        assertThat(catalogCategories.get(0).get("name").asText()).isEqualTo("미니게임");
+        assertThat(catalogCategories.get(0).get("order").asInt()).isEqualTo(1);
+        assertThat(catalogCategories.get(1).get("code").asText()).isEqualTo("PARTY_GAME");
+        assertThat(catalogCategories.get(2).get("code").asText()).isEqualTo("DEDUCTION");
+        assertThat(catalogCategories.get(3).get("code").asText()).isEqualTo("STRATEGY");
+        assertThat(catalogCategories.get(4).get("code").asText()).isEqualTo("LUCK");
+        assertThat(catalogCategories.get(5).get("code").asText()).isEqualTo("INDIVIDUAL");
+        assertThat(catalogCategories.get(6).get("code").asText()).isEqualTo("TEAM");
+        Set<String> catalogCodes = new HashSet<>();
+        int previousOrder = Integer.MIN_VALUE;
+        for (var category : catalogCategories) {
+            assertThat(catalogCodes.add(category.get("code").asText())).isTrue();
+            assertThat(category.get("order").asInt()).isGreaterThanOrEqualTo(previousOrder);
+            previousOrder = category.get("order").asInt();
+        }
+        var games = catalog.get("games");
+        for (var game : games) {
+            if (!game.get("enabled").asBoolean()) continue;
+            var categoryCodes = game.get("catalogCategoryCodes");
+            assertThat(categoryCodes.isEmpty()).isFalse();
+            Set<String> uniqueCodes = new HashSet<>();
+            for (var categoryCode : categoryCodes) {
+                assertThat(catalogCodes).contains(categoryCode.asText());
+                assertThat(uniqueCodes.add(categoryCode.asText())).isTrue();
+            }
+        }
         assertThat(games.get(0).get("maxPlayers").asInt()).isEqualTo(12);
+        assertThat(games.get(0).get("catalogCategoryCodes").get(0).asText()).isEqualTo("PARTY_GAME");
         assertThat(games.get(1).get("gameType").asText()).isEqualTo("BLIND");
+        assertThat(games.get(1).get("catalogCategoryCodes").toString()).doesNotContain("MINI_GAME");
         assertThat(games.get(1).get("minPlayers").asInt()).isEqualTo(2);
         assertThat(games.get(1).get("maxPlayers").asInt()).isEqualTo(2);
         assertThat(games.get(2).get("gameType").asText()).isEqualTo("MAFIA");
         assertThat(games.get(2).get("minPlayers").asInt()).isEqualTo(4);
         assertThat(games.get(2).get("maxPlayers").asInt()).isEqualTo(12);
         assertThat(games.get(4).get("gameType").asText()).isEqualTo("PIG");
+        assertThat(games.get(4).get("catalogCategoryCodes")).hasSize(3);
+        assertThat(games.get(4).get("catalogCategoryCodes").get(0).asText()).isEqualTo("MINI_GAME");
+        assertThat(games.get(4).get("catalogCategoryCodes").get(1).asText()).isEqualTo("LUCK");
+        assertThat(games.get(4).get("catalogCategoryCodes").get(2).asText()).isEqualTo("INDIVIDUAL");
         assertThat(games.get(4).get("minPlayers").asInt()).isEqualTo(2);
         assertThat(games.get(4).get("maxPlayers").asInt()).isEqualTo(6);
         assertThat(games.get(5).get("gameType").asText()).isEqualTo("TOOTH");
         assertThat(games.get(5).get("minPlayers").asInt()).isEqualTo(2);
         assertThat(games.get(5).get("maxPlayers").asInt()).isEqualTo(8);
+        assertThat(games.get(5).get("catalogCategoryCodes").get(0).asText()).isEqualTo("MINI_GAME");
         String host = client();
         var created = body(request("POST", "/api/rooms", host, playerBody(" 방장 ")), 201);
         long room = created.at("/room/roomId").asLong();
