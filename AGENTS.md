@@ -18,9 +18,10 @@
 8. `docs/common/games/YUT_GAME_SPEC.md`
 9. `docs/common/games/PIG_GAME_SPEC.md`
 10. `docs/common/games/TOOTH_GAME_SPEC.md`
-11. `docs/BACKEND_ARCHITECTURE.md`
-12. `docs/DATABASE.md`
-13. `docs/IMPLEMENTATION_NOTES.md`
+11. `docs/common/games/UNDERMINE_GAME_SPEC.md`
+12. `docs/BACKEND_ARCHITECTURE.md`
+13. `docs/DATABASE.md`
+14. `docs/IMPLEMENTATION_NOTES.md`
 
 `docs/common/`은 `noopi-web/docs/common/`과 파일 구성 및 내용을 동일하게 유지한다.
 백엔드 전용 운영 계약은 `docs/OPERATIONS_API.md`에서 관리한다.
@@ -88,6 +89,7 @@ Memory:
 - 마피아 게임의 역할/생존 상태/밤 행동/조사/의심/처형 투표/사망/승패
 - 피그 주사위 후보/결과, 턴 점수/확정 점수, 턴 순서, FINISHED 순위
 - 누피 콱! 턴 순서, 이빨 선택 상태, 꽝 이빨, 최근 결과와 당첨 Player
+- 언더마인 역할, 손패, 카드 덱, 보드, 목적지, 장비, 지도 결과, 금과 라운드 결과
 
 MySQL:
 - LiarCategory
@@ -239,6 +241,22 @@ Frontend 계산/버튼 숨김을 권한 검증으로 신뢰하지 않는다.
 - `/state`는 24개 공개 선택 상태와 요청 Player의 `allowedActions`를 제공
 - TOOTH 구현은 `game/tooth`에 격리하며 다른 게임 전용 코드에 의존하지 않음
 
+## 11-6. 언더마인 불변 규칙
+
+- 참가자 3~10명, 3라운드 진행, 역할·손패·지도 결과·금 카드는 개인화 정보
+- 길 카드는 `0°` 또는 `180°`만 허용하며 서버가 모든 인접 면의 통로 일치와
+  출발점까지 이어지는 연결을 검증한다.
+- 출발점 `(0, 0)`은 보드의 왼쪽 경계이며 `x < 0`인 길 배치는 허용하지 않는다.
+- 서버가 각 길 카드의 유효한 좌표·회전 후보를 계산해 `/state`의
+  `cardOptions`로 제공한다. Client가 계산한 임의 좌표를 신뢰하지 않는다.
+- 고장 장비가 하나라도 있는 Player는 길 카드를 놓을 수 없지만 행동 카드는
+  사용할 수 있다. 수리는 가장 먼저 고장 난 장비 하나를 서버가 선택한다.
+- 역할, 카드 셔플·드로우, 길 배치 후보, 장비 대상, 지도 결과, 목적지 공개,
+  라운드 승패, 금 지급과 최종 우승자를 서버가 확정한다.
+- 언더마인 상태는 Runtime 전용이며 영구 콘텐츠 테이블을 임의 추가하지 않는다.
+- UNDERMINE 구현은 `game/undermine`에 격리하며 Room이나 다른 게임 모듈에
+  길 연결 규칙을 넣지 않는다.
+
 ## 12. 투표 비밀
 
 **다른 Player가 누구에게 투표했는지는 항상 비공개다.**
@@ -387,6 +405,10 @@ Room/Player/GameSession/Role/Vote용 테이블을 현재 MVP에 임의 추가하
 - 누피 콱! 현재 턴·이빨 범위·중복 선택 검증과 Idempotency-Key 처리
 - 누피 콱! SAFE 다음 턴과 BOMB 즉시 종료의 원자성
 - 누피 콱! 진행 중 꽝 비노출과 재접속 Projection
+- 언더마인 3~10명 시작과 역할·손패 개인화
+- 언더마인 길 카드의 `x >= 0` 경계, 인접 면 일치, 출발점 연결, 0°/180° 후보와 잘못된 배치 거절
+- 언더마인 장비 고장 시 길 배치 차단과 가장 먼저 고장 난 장비 자동 수리
+- 언더마인 지도 결과 비공개, 목적지 공개, 라운드 승패·금 지급·최종 순위
 
 ## 25. 구현 후
 최소 다음을 실행한다.

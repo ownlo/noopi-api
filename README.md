@@ -5,13 +5,15 @@ Java 26 · Spring Boot 3.5 · Spring MVC/WebSocket · JPA · MySQL 8 · Flyway.
 ## 문서 기준과 구현 범위
 
 `docs/common/`은 `noopi-web/docs/common/`과 파일 구성 및 내용이 동일하다.
-공통 명세는 라이어·블라인드·마피아·윷놀이·피그·누피 콱!을 포함한다. 현재 서버 코드는
+공통 명세는 라이어·블라인드·마피아·윷놀이·피그·누피 콱!·언더마인을 포함한다. 현재 서버 코드는
 라이어/블라인드/마피아/윷놀이/피그/누피 콱!을 지원한다. 윷놀이는 개인전/팀전, 추가 던지기,
 이동권, 지름길, 업기/잡기/완주와 승리를 서버 Runtime에서 처리한다.
+언더마인은 계약과 구현 계획만 반영된 상태이며 서버 Runtime/API 구현은 아직 완료되지 않았다.
 
 - [윷놀이 규칙](docs/common/games/YUT_GAME_SPEC.md): 개인전/팀전, 턴, 지름길, 업기/잡기/완주.
 - [피그 규칙](docs/common/games/PIG_GAME_SPEC.md): 2~6명 개인전, 성공별 위험도 증가, 점수·순위·종료.
 - [누피 콱! 규칙](docs/common/games/TOOTH_GAME_SPEC.md): 2~8명, 24개 이빨, 서버 꽝 판정과 당첨.
+- [언더마인 규칙](docs/common/games/UNDERMINE_GAME_SPEC.md): 3~10명, 길 연결, 장비, 지도, 3라운드 금 경쟁.
 - [API 계약](docs/common/API_SPEC.md): 윷놀이 행동 API, 개인화 상태, 이벤트와 오류.
 - [백엔드 구조](docs/BACKEND_ARCHITECTURE.md): Runtime/동시성/Projection 구현 목표.
 - [구현 노트](docs/IMPLEMENTATION_NOTES.md): 구현 체크리스트, 미확정 보드 ID 및 연동 차이.
@@ -70,6 +72,9 @@ curl -X POST http://localhost:8080/api/rooms \
 `docs/common/API_SPEC.md`를 따른다. 윷놀이의 5개 전용 엔드포인트와 공통
 카탈로그·생성·시작·취소·상태 조회가 연결되어 있다.
 
+언더마인 계약도 같은 문서에 정의되어 있지만 현재 서버 엔드포인트와 Runtime에는
+아직 연결되지 않았다. 문서 존재를 구현 완료로 간주하지 않는다.
+
 ## WebSocket
 
 브라우저에서 Room 참가 후 연결한다. query parameter는 transport 식별을 위한 구현 방식이다.
@@ -102,6 +107,7 @@ REST로 행동을 제출하며 역할/제시어는 개인별 `/state`로 조회�
 - `game/mafia`: 마피아 역할·phase, 밤 행동, 의심, 처형 투표, 사망·승패 판정과 개인별 projection.
 - `game/yut`: Node/Edge 경로, 팀·턴·이동권, 업기/잡기/완주와 개인별 행동 projection.
 - `game/pig`: 주사위 후보·점수·턴·FINISHED 순위와 개인별 허용 행동 projection.
+- `game/undermine` (구현 예정): 길 배치 후보·장비·지도·금과 개인별 손패 projection.
 - `application`: Room 잠금 안에서 REST 행동을 조정, TTL 및 장기 disconnect 처리.
 - `content`: 콘텐츠 3개 JPA Entity, Repository, 활성 콘텐츠 선택.
 - `realtime`: Room 검증, 연결 관리, 계약에 정의된 공개 이벤트 전달.

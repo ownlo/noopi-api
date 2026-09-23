@@ -30,6 +30,8 @@ NOOPI MVP에서 MySQL에 영구 저장하는 데이터의 범위를 정의한다
 - Pig Game 점수 / 턴 / 성공 횟수 / 확률 / Player 상태와 순위
 - Tooth Game 턴 순서 / 현재 턴 / 24개 이빨 상태 / 꽝 이빨 / 최근 결과 /
   당첨 Player
+- UnderMine Game 라운드 / 역할 / 손패·덱 / 턴 / 길 보드·목적지 / 장비 /
+  지도 결과 / 금 카드·누적 금 / 라운드와 최종 결과
 
 윷판 Node/Edge 그래프는 게임 모듈의 규칙 정의다. 윷놀이를 위해 콘텐츠
 테이블이나 Runtime 영속화 테이블을 추가하지 않는다. 재접속 복구는 살아
@@ -42,6 +44,8 @@ NOOPI MVP에서 MySQL에 영구 저장하는 데이터의 범위를 정의한다
 
 MVP에서 Room/GameSession/Role/Vote 테이블을 만들지 않는다.
 마피아 게임은 영구 콘텐츠를 사용하지 않으므로 별도 MySQL 테이블을 추가하지 않는다.
+언더마인도 카드·역할·보드 상태를 Runtime에서 관리하며 별도 MySQL 테이블을
+추가하지 않는다.
 
 ## 3. MySQL / Migration
 - MySQL 8.x
@@ -164,6 +168,12 @@ pig_game
 pig_turn
 tooth_game
 tooth_selection
+undermine_game
+undermine_role
+undermine_card
+undermine_board_card
+undermine_tool_status
+undermine_gold
 ```
 
 서버 재시작 후 진행 중 게임 복구는 현재 MVP 요구가 아니다.

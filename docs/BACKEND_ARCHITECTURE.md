@@ -14,6 +14,7 @@
 - `docs/common/games/YUT_GAME_SPEC.md`
 - `docs/common/games/PIG_GAME_SPEC.md`
 - `docs/common/games/TOOTH_GAME_SPEC.md`
+- `docs/common/games/UNDERMINE_GAME_SPEC.md`
 
 `docs/common/`은 Frontend의 동일 디렉터리와 내용까지 일치시킨다. 아래 구조는
 구현 목표이며 게임별 실제 구현 여부는 `IMPLEMENTATION_NOTES.md`를 확인한다.
@@ -51,6 +52,7 @@ Mobile Web
  ├─ Yut Game Runtime
  ├─ Pig Game Runtime
  ├─ Tooth Game Runtime
+ ├─ UnderMine Game Runtime
  ├─ Realtime
  └─ Persistence
        ↓
@@ -99,6 +101,7 @@ MVP에서 다음은 서버 Memory에 둔다.
   개인전 완주 순위와 팀전 승자
 - 피그 Player별 확정 점수/상태/순위, 현재 턴 점수, 성공 횟수/1 발생 확률과 최근 결과
 - 누피 콱! 턴 순서, 현재 턴, 24개 이빨 선택 상태, 꽝 이빨, 최근 선택과 당첨 Player
+- 언더마인 역할·손패·덱, 턴, 길 보드·목적지, 장비, 지도 결과, 금과 라운드 결과
 - 최근 사용 제시어 식별값
 - WebSocket 연결 관련 Runtime 정보
 
@@ -356,6 +359,27 @@ GameSession `FINISHED` 전환을 하나의 원자적 변경으로 처리한다.
 Projection으로 복구한다. 연결 종료만으로 자동 턴 전환이나 당첨 처리를 하지
 않고, 진행 중 명시적 이탈이면 공통 게임 규칙에 따라 취소한다.
 
+## 16-6. 언더마인 Runtime
+
+언더마인 상세 규칙은 `game/undermine` 모듈이 소유한다.
+`UnderMineGameRuntime`은 라운드별 역할, 개인 손패, 드로우·버림 덱, 턴 순서,
+길 보드와 목적지, Player별 고장 장비, 개인 지도 결과, 금 카드와 누적 금을
+보관한다. Room과 다른 게임 모듈은 길 연결이나 승패 규칙을 알지 않는다.
+
+길 카드 후보는 서버가 카드의 `0°`와 `180°`를 각각 적용해 계산한다. 출발점은
+보드의 왼쪽 경계이므로 `x < 0`을 제외하고, 빈 좌표, 상하좌우 인접 여부,
+맞닿는 모든 면의 통로 유무 일치, 출발점까지의 실제 연결, 현재 Player의 장비
+상태를 검증한 좌표·회전 조합만 개인화된 `cardOptions`에 포함한다. 행동 요청
+시에도 전달된 좌표·회전이 최신 후보에 포함되는지 Room 잠금 안에서 다시
+검증하며 Client가 임의로 만든 배치를 신뢰하지 않는다.
+
+장비 고장·수리, 지도·파괴, 목적지 공개, 라운드 승패, 금 지급과 최종 순위도
+같은 원자 경계에서 확정한다. 역할·손패·지도 결과·금 선택은 요청 Player 기준
+Projection으로 보호하고 WebSocket은 상태 갱신 신호로만 사용한다.
+
+이 절은 구현 목표다. 실제 구현 완료 여부는 `IMPLEMENTATION_NOTES.md`의
+언더마인 체크리스트를 기준으로 판단한다.
+
 ## 17. Disconnect / Reconnect
 WebSocket 연결 종료는 Room 탈퇴가 아니다. Player를 `DISCONNECTED`로 표시하고 일정 시간 재접속을 허용한다.
 
@@ -395,6 +419,7 @@ Host가 Disconnect되어도 Room을 자동 종료하거나 Host 권한을 이전
   개인전 순위·팀전 승리 확정
 - 피그 중복 ROLL/STOP, 점수 확정·턴 전환과 FINISHED/마지막 순위 확정
 - 누피 콱! 동시 이빨 선택, 중복 키, SAFE 턴 전환과 BOMB 당첨/FINISHED 확정
+- 언더마인 카드 행동 중복, 길 후보 검증·배치, 목적지 공개와 라운드 종료 확정
 
 전역 Lock 하나로 모든 Room을 직렬화하지 않는다.
 

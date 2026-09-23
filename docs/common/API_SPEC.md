@@ -9,7 +9,8 @@
 `GAME_SESSION_SPEC.md`, 실시간 원칙은 `REALTIME_SPEC.md`, 게임별 규칙은
 `games/LIAR_GAME_SPEC.md`, `games/BLIND_GAME_SPEC.md`,
 `games/MAFIA_GAME_SPEC.md`, `games/YUT_GAME_SPEC.md`,
-`games/PIG_GAME_SPEC.md`, `games/TOOTH_GAME_SPEC.md`를 따른다.
+`games/PIG_GAME_SPEC.md`, `games/TOOTH_GAME_SPEC.md`,
+`games/UNDERMINE_GAME_SPEC.md`를 따른다.
 
 서버의 현재 상태가 Source of Truth이며, 클라이언트는 게임
 상태·역할·승패·투표 결과를 자체 계산하지 않는다.
@@ -584,6 +585,111 @@ Response `200 OK` 예시:
 다른 Player의 턴이거나 요청 처리 권한이 없으면 `allowedActions`는 빈 배열이다.
 Frontend는 이 배열을 기준으로 이빨 터치 UI를 제공한다.
 
+### 언더마인 개인화 상태
+
+`gameState.type = "UNDERMINE"`이면 공개 보드와 턴 상태에 요청 Player의 역할,
+손패, 지도 기록, 금 카드와 카드별 행동 후보를 결합해 반환한다.
+
+``` json
+{
+  "type": "UNDERMINE",
+  "phase": "PLAYING",
+  "roundNo": 1,
+  "totalRounds": 3,
+  "participantCount": 5,
+  "myRole": "MINER",
+  "roleChecked": true,
+  "roleCheckedCount": 5,
+  "turnOrderPlayerIds": [13, 12, 14, 18, 21],
+  "currentTurnPlayerId": 13,
+  "drawPileCount": 31,
+  "players": [
+    {
+      "playerId": 13,
+      "nickname": "예은",
+      "handCount": 6,
+      "brokenTools": []
+    },
+    {
+      "playerId": 12,
+      "nickname": "종윤",
+      "handCount": 6,
+      "brokenTools": ["LANTERN"]
+    }
+  ],
+  "boardCards": [
+    {
+      "boardCardId": "start",
+      "cardType": "START",
+      "pathPatternCode": "START",
+      "x": 0,
+      "y": 0,
+      "rotation": 0
+    },
+    {
+      "boardCardId": "pc-104",
+      "cardType": "PATH",
+      "pathPatternCode": "PATH_CROSS_CONNECTED",
+      "x": 1,
+      "y": 0,
+      "rotation": 0
+    }
+  ],
+  "goals": [
+    { "goalId": "goal-top", "x": 8, "y": -2, "status": "HIDDEN", "result": null },
+    { "goalId": "goal-middle", "x": 8, "y": 0, "status": "REVEALED", "result": "STONE" },
+    { "goalId": "goal-bottom", "x": 8, "y": 2, "status": "HIDDEN", "result": null }
+  ],
+  "myHand": [
+    {
+      "cardId": "hand-301",
+      "cardType": "PATH",
+      "pathPatternCode": "PATH_STRAIGHT_HORIZONTAL"
+    },
+    {
+      "cardId": "hand-302",
+      "cardType": "BREAK_TOOL",
+      "toolType": "PICKAXE"
+    }
+  ],
+  "cardOptions": [
+    {
+      "cardId": "hand-301",
+      "actionType": "PLACE_PATH",
+      "placements": [
+        { "x": 2, "y": 0, "rotation": 0 },
+        { "x": 1, "y": 1, "rotation": 180 }
+      ]
+    },
+    {
+      "cardId": "hand-302",
+      "actionType": "BREAK_TOOL",
+      "targets": [
+        { "playerId": 12, "toolType": "PICKAXE" },
+        { "playerId": 14, "toolType": "PICKAXE" }
+      ]
+    }
+  ],
+  "myScoutedGoals": [
+    { "goalId": "goal-top", "result": "TREASURE" }
+  ],
+  "myGoldCards": [
+    { "goldCardId": "gold-17", "value": 2 }
+  ],
+  "myGoldTotal": 2,
+  "allowedActions": ["PLAY_CARD"]
+}
+```
+
+`boardCards`, `goals`, 턴, 덱 수, Player별 `handCount`와 `brokenTools`는 공개
+정보다. `myRole`, `myHand`, `cardOptions`, `myScoutedGoals`, `myGoldCards`와
+`myGoldTotal`은 요청 Player에게만 제공한다. 다른 Player의 손패 카드, 지도
+결과, 금 카드 또는 진행 중 누적 금점수를 포함하지 않는다.
+
+현재 Player의 손패에 실행 가능한 카드가 없을 때만 `allowedActions`에
+`DISCARD_CARD`를 제공한다. `PLAY_CARD` 또는 `DISCARD_CARD` 여부와 카드별
+후보는 서버가 확정하며 Frontend가 `boardCards`로 다시 계산하지 않는다.
+
 ### 마피아 게임 개인화 상태
 
 마피아 게임의 `gameState`는 phase와 현재 Player의 생존 여부, 허용된 행동,
@@ -893,6 +999,14 @@ Response `200 OK`:
       "minPlayers": 2,
       "maxPlayers": 8,
       "enabled": true
+    },
+    {
+      "gameType": "UNDERMINE",
+      "name": "언더마인 (UnderMine)",
+      "catalogCategoryCodes": ["PARTY_GAME", "DEDUCTION", "STRATEGY", "TEAM"],
+      "minPlayers": 3,
+      "maxPlayers": 10,
+      "enabled": true
     }
   ]
 }
@@ -915,12 +1029,12 @@ GameSession 생성 `config`에 전달하지 않는다.
 | 카테고리 | 게임 |
 | --- | --- |
 | `MINI_GAME` / 미니게임 | `PIG`, `TOOTH` |
-| `PARTY_GAME` / 파티게임 | `LIAR`, `BLIND`, `MAFIA`, `YUT`, `TOOTH` |
-| `DEDUCTION` / 추리 | `LIAR`, `BLIND`, `MAFIA` |
-| `STRATEGY` / 전략 | `YUT` |
+| `PARTY_GAME` / 파티게임 | `LIAR`, `BLIND`, `MAFIA`, `YUT`, `TOOTH`, `UNDERMINE` |
+| `DEDUCTION` / 추리 | `LIAR`, `BLIND`, `MAFIA`, `UNDERMINE` |
+| `STRATEGY` / 전략 | `YUT`, `UNDERMINE` |
 | `LUCK` / 운빨 | `YUT`, `PIG`, `TOOTH` |
 | `INDIVIDUAL` / 개인전 | `BLIND`, `YUT`, `PIG`, `TOOTH` |
-| `TEAM` / 팀전 | `LIAR`, `MAFIA`, `YUT` |
+| `TEAM` / 팀전 | `LIAR`, `MAFIA`, `YUT`, `UNDERMINE` |
 
 ------------------------------------------------------------------------
 
@@ -1032,6 +1146,18 @@ Request --- 누피 콱!:
 
 누피 콱!에는 사용자 설정이 없다. 이빨 수, 꽝 수 또는 턴 규칙을 config로
 보내면 `INVALID_GAME_CONFIG`를 반환한다.
+
+Request --- 언더마인:
+
+``` json
+{
+  "gameType": "UNDERMINE",
+  "config": {}
+}
+```
+
+언더마인은 사용자 설정이 없다. 라운드 수, 역할 비율, 카드 수량, 보드 거리
+또는 자유 버리기 여부를 config로 보내면 `INVALID_GAME_CONFIG`를 반환한다.
 
 Request --- 윷놀이 개인전:
 
@@ -1172,6 +1298,20 @@ Response:
 → 첫 Player 지정
 → GameSession PLAYING
 → Tooth phase PLAYING
+```
+
+언더마인의 경우 서버가 다음을 수행한다.
+
+``` text
+참가 인원이 3~10명인지 검증
+→ 3라운드용 금 카드 덱 초기화
+→ 전체 참가자의 원형 턴 순서와 첫 Player 무작위 확정
+→ 1라운드 역할 카드 구성·셔플·배정과 미사용 역할 카드 1장 보관
+→ 길 카드 40장과 행동 카드 27장 셔플
+→ 인원별 초기 손패 지급과 드로우 덱 생성
+→ 출발 카드와 무작위 목적지 3장 배치
+→ GameSession PLAYING
+→ UnderMine phase ROLE_REVEAL
 ```
 
 주요 오류:
@@ -3057,6 +3197,319 @@ DUPLICATE_ACTION
 
 ------------------------------------------------------------------------
 
+# UNDERMINE Game API
+
+## 언더마인 역할 확인
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/undermine/role-check
+```
+
+Header:
+
+``` text
+X-Client-Id: <clientId>
+Idempotency-Key: <unique-request-id>
+```
+
+현재 라운드의 역할을 확인 완료로 기록한다. 같은 Player가 같은 라운드에서 두 번
+완료할 수 없다. 전체 참가자가 확인하면 서버가 phase를 `PLAYING`으로 바꾸고
+현재 라운드의 첫 턴을 시작한다.
+
+Response: `204 No Content`
+
+## 언더마인 카드 행동
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/undermine/card-plays
+```
+
+Header:
+
+``` text
+X-Client-Id: <clientId>
+Idempotency-Key: <unique-request-id>
+```
+
+길 카드 배치:
+
+``` json
+{
+  "cardId": "hand-301",
+  "actionType": "PLACE_PATH",
+  "placement": { "x": 2, "y": 0, "rotation": 180 }
+}
+```
+
+`placement.x`는 `0` 이상이어야 한다. 출발점 `(0, 0)`은 보드의 왼쪽
+경계이므로 `x < 0`인 배치는 `cardOptions` 후보에 포함하지 않으며 요청해도
+`INVALID_PATH_PLACEMENT`로 거절한다.
+
+장비 고장:
+
+``` json
+{
+  "cardId": "hand-302",
+  "actionType": "BREAK_TOOL",
+  "targetPlayerId": 12,
+  "toolType": "PICKAXE"
+}
+```
+
+장비 수리:
+
+``` json
+{
+  "cardId": "hand-303",
+  "actionType": "REPAIR_TOOL",
+  "targetPlayerId": 12
+}
+```
+
+수리할 장비 종류는 Client가 보내지 않는다. 서버가 대상 Player의
+`brokenTools`에서 가장 먼저 고장 난 장비 1개를 제거한다.
+
+파괴:
+
+``` json
+{
+  "cardId": "hand-304",
+  "actionType": "DESTROY_PATH",
+  "targetBoardCardId": "pc-104"
+}
+```
+
+지도:
+
+``` json
+{
+  "cardId": "hand-305",
+  "actionType": "USE_MAP",
+  "goalId": "goal-top"
+}
+```
+
+서버는 요청 Player가 현재 턴인지, 카드가 실제 손패에 있는지, `actionType`이
+카드 종류와 일치하는지, 요청 대상이 해당 카드의 `cardOptions` 후보인지 다시
+검증한다. 길 좌표의 `x >= 0` 경계, 연결, 회전, 인접 면, 출발점 연결,
+고장·수리 대상, 파괴 대상과 지도 대상을 하나의 Room 단위 원자 처리 안에서
+확정한다.
+
+Response `200 OK`:
+
+``` json
+{
+  "sequence": 18,
+  "playerId": 13,
+  "actionType": "PLACE_PATH",
+  "roundEnded": false,
+  "nextCurrentTurnPlayerId": 12
+}
+```
+
+지도 결과는 사용 Player에게만 HTTP 응답으로 추가 제공한다.
+
+``` json
+{
+  "sequence": 19,
+  "playerId": 13,
+  "actionType": "USE_MAP",
+  "privateResult": {
+    "goalId": "goal-top",
+    "result": "TREASURE"
+  },
+  "roundEnded": false,
+  "nextCurrentTurnPlayerId": 12
+}
+```
+
+`privateResult`는 Room broadcast에 포함하지 않는다. 행동 확정 후 덱이 남아
+있으면 서버가 카드 1장을 뽑아 요청 Player의 손패에 넣는다. 새 카드는 해당
+Player의 다음 `/state`에만 나타난다.
+
+## 언더마인 제한 버리기
+
+버리기는 카드 행동과 동일한 Endpoint를 사용한다.
+
+``` json
+{
+  "cardId": "hand-306",
+  "actionType": "DISCARD_CARD"
+}
+```
+
+서버가 현재 손패 전체를 검사해 실행 가능한 카드가 한 장도 없다고 확정한 경우에만
+허용한다. 낼 수 있는 카드가 하나라도 있으면 `CARD_DISCARD_NOT_ALLOWED`를
+반환한다. 버린 카드의 `cardId`, 종류와 앞면은 다른 Client의 상태나 이벤트에
+포함하지 않는다.
+
+## 언더마인 라운드 결과와 금 선택
+
+광부가 보물에 도달하거나 덱 소진 후 전체 Player에게 실행 가능한 카드가 없으면
+phase를 `ROUND_RESULT`로 전환하고 역할, 미사용 역할 카드, 보물 위치와 승리
+진영을 공개한다.
+
+광부 승리로 금 선택이 필요하면 이어서 `GOLD_SELECTION`으로 전환한다.
+개인화 상태는 현재 선택 Player에게만 다음 정보를 제공한다.
+
+``` json
+{
+  "phase": "GOLD_SELECTION",
+  "goldSelection": {
+    "currentSelectorPlayerId": 13,
+    "remainingSelectionCount": 3,
+    "options": [
+      { "goldCardId": "gold-17", "value": 2 },
+      { "goldCardId": "gold-04", "value": 1 },
+      { "goldCardId": "gold-21", "value": 3 }
+    ]
+  },
+  "allowedActions": ["SELECT_GOLD"]
+}
+```
+
+현재 선택 Player가 아니면 `options`는 빈 배열이며 `SELECT_GOLD`를 제공하지
+않는다.
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/undermine/gold-selections
+```
+
+Header:
+
+``` text
+X-Client-Id: <clientId>
+Idempotency-Key: <unique-request-id>
+```
+
+Request:
+
+``` json
+{ "goldCardId": "gold-21" }
+```
+
+Response: `204 No Content`
+
+방해꾼 승리의 금 지급과 실제 방해꾼이 없는 실패 라운드는 서버가 자동 처리하며
+별도 선택 요청을 만들지 않는다.
+
+## 언더마인 다음 라운드 시작
+
+금 지급까지 끝난 `ROUND_RESULT` 상태에서 방장만 요청할 수 있다.
+
+``` http
+POST /api/rooms/{roomId}/game-sessions/{gameSessionId}/undermine/rounds/next
+```
+
+Header:
+
+``` text
+X-Client-Id: <clientId>
+Idempotency-Key: <unique-request-id>
+```
+
+Response: `204 No Content`
+
+서버는 역할, 손패, 보드, 목적지, 고장 장비와 지도 기록을 초기화하고 다음
+라운드를 `ROLE_REVEAL`로 시작한다. 3라운드 금 지급이 끝난 경우 이 Endpoint를
+허용하지 않고 GameSession을 `FINISHED`로 전환한다.
+
+## 언더마인 종료 상태
+
+``` json
+{
+  "type": "UNDERMINE",
+  "phase": "FINISHED",
+  "roundNo": 3,
+  "totalRounds": 3,
+  "allowedActions": [],
+  "result": {
+    "rankings": [
+      { "rank": 1, "playerId": 13, "nickname": "예은", "goldTotal": 9 },
+      { "rank": 1, "playerId": 12, "nickname": "종윤", "goldTotal": 9 },
+      { "rank": 3, "playerId": 14, "nickname": "철수", "goldTotal": 5 }
+    ],
+    "winnerPlayerIds": [13, 12],
+    "rounds": [
+      {
+        "roundNo": 1,
+        "winnerTeam": "MINERS",
+        "players": [
+          { "playerId": 13, "role": "MINER", "goldGained": 3 },
+          { "playerId": 12, "role": "SABOTEUR", "goldGained": 0 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+동점 Player는 같은 `rank`를 가지며 공동 순위 다음 번호는 공동 인원만큼
+건너뛴다. 예를 들어 금점수가 `9, 9, 5`이면 `rank`는 `1, 1, 3`이다.
+`winnerPlayerIds`에는 공동 우승자를 모두 포함한다. 실제 응답의 `rounds`에는
+1~3라운드 전체 결과를 포함한다.
+
+## 언더마인 WebSocket 이벤트
+
+모든 이벤트는 상태 갱신 신호이며 Client는 수신 후 개인화된 `/state`를 다시
+조회한다.
+
+``` text
+UNDERMINE_ROLE_CHECKED
+UNDERMINE_CARD_PLAYED
+UNDERMINE_PATH_DESTROYED
+UNDERMINE_GOAL_REVEALED
+UNDERMINE_TURN_CHANGED
+UNDERMINE_ROUND_FINISHED
+UNDERMINE_GOLD_SELECTION_CHANGED
+UNDERMINE_ROUND_STARTED
+```
+
+``` json
+{
+  "type": "UNDERMINE_CARD_PLAYED",
+  "gameSessionId": 55,
+  "payload": {
+    "sequence": 18,
+    "playerId": 13,
+    "actionType": "PLACE_PATH"
+  }
+}
+```
+
+`PLACE_PATH`, `BREAK_TOOL`, `REPAIR_TOOL`, `DESTROY_PATH`, `USE_MAP`은 공개
+행동이므로 공개 대상과 확정 결과를 payload에 포함할 수 있다. `USE_MAP`의
+목적지 결과와 새로 뽑은 카드는 포함하지 않는다. `DISCARD_CARD`는 Player와
+행동 타입만 공개한다.
+
+역할 확인 이벤트에는 Player와 완료 인원만 포함하고 역할은 포함하지 않는다.
+라운드 종료 이벤트에는 서버가 공개를 확정한 역할, 보물과 승리 진영을 포함할
+수 있다. 금 선택 이벤트에는 현재 선택 Player와 남은 선택 수만 포함하고 카드
+후보, 선택 카드와 금점수는 포함하지 않는다.
+
+주요 오류:
+
+``` text
+INVALID_GAME_PHASE
+NOT_CURRENT_PLAYER
+ROLE_ALREADY_CHECKED
+ACTION_NOT_ALLOWED
+CARD_NOT_IN_HAND
+CARD_ACTION_MISMATCH
+INVALID_CARD_TARGET
+INVALID_PATH_PLACEMENT
+TOOL_ALREADY_BROKEN
+TOOL_NOT_BROKEN
+CARD_DISCARD_NOT_ALLOWED
+GOLD_SELECTION_NOT_ALLOWED
+INVALID_GOLD_CARD
+NOT_ROOM_HOST
+NO_NEXT_ROUND
+DUPLICATE_ACTION
+```
+
+------------------------------------------------------------------------
+
 # Security / Information Exposure
 
 ## 29. 절대 공개하면 안 되는 정보
@@ -3075,6 +3528,9 @@ DUPLICATE_ACTION
 -   다른 Player의 투표 대상
 -   서버 내부 정답 데이터
 -   누피 콱!에서 아직 선택되지 않은 꽝 이빨 위치
+-   언더마인에서 종료 전 공개되지 않은 다른 Player의 역할
+-   언더마인에서 다른 Player의 손패, 지도 결과, 금 카드와 누적 금점수
+-   언더마인의 미사용 역할 카드와 공개 전 목적지 결과
 -   다른 Room의 상태
 
 UI에서 숨기는 것으로 보안을 대체하지 않는다.
@@ -3119,6 +3575,9 @@ Frontend의 버튼 표시 여부는 권한 검증 수단이 아니다.
 -   마피아 역할 확인과 밤 행동
 -   마피아 처형 투표와 결과 단계 진행
 -   누피 콱! 이빨 선택
+-   언더마인 라운드별 역할 확인
+-   언더마인 카드 행동과 제한 버리기
+-   언더마인 금 선택과 다음 라운드 시작
 
 이미 완료된 행동을 다시 요청하면 상태에 따라 `409 Conflict`와 고정 오류
 코드를 반환한다.
@@ -3143,6 +3602,12 @@ gameSessionId + nightNo + playerId
 동일 키 재전송은 같은 이빨 선택과 턴 전환을 다시 실행하지 않는다. 서로 다른
 요청의 경합은 Room 단위 원자 처리와 현재 턴 검증으로 하나만 성공시킨다.
 
+언더마인 카드 행동은 `Idempotency-Key`와 현재 라운드·턴·손패 상태를 함께
+검증한다. 같은 카드가 두 번 사용되거나 한 턴에 복수 행동이 확정되어서는 안
+된다. 역할 확인은 `gameSessionId + roundNo + playerId`, 금 선택은
+`gameSessionId + roundNo + selectionOrder + playerId`를 논리 키로 중복을
+방지한다.
+
 ------------------------------------------------------------------------
 
 # Reconnect
@@ -3165,6 +3630,10 @@ WebSocket 재연결
 해당 행동을 다시 수행할 수 없다. 마피아 게임에서는 본인의 역할, 생존
 여부, 역할 확인 여부, 밤 행동 제출 여부, 경찰 조사 기록, 마피아 동료 목록,
 현재 투표 제출 여부를 함께 복구한다.
+
+언더마인은 현재 라운드와 phase, 본인 역할과 확인 여부, 개인 손패와 카드별
+후보, 보드와 목적지, 턴, 장비 상태, 지도 기록, 개인 금 카드와 금 선택 상태를
+함께 복구한다.
 
 ------------------------------------------------------------------------
 
@@ -3255,6 +3724,26 @@ TOOTH_ALREADY_SELECTED
 DUPLICATE_ACTION
 ```
 
+### UNDERMINE Game
+
+``` text
+INVALID_GAME_PHASE
+NOT_CURRENT_PLAYER
+ROLE_ALREADY_CHECKED
+ACTION_NOT_ALLOWED
+CARD_NOT_IN_HAND
+CARD_ACTION_MISMATCH
+INVALID_CARD_TARGET
+INVALID_PATH_PLACEMENT
+TOOL_ALREADY_BROKEN
+TOOL_NOT_BROKEN
+CARD_DISCARD_NOT_ALLOWED
+GOLD_SELECTION_NOT_ALLOWED
+INVALID_GOLD_CARD
+NO_NEXT_ROUND
+DUPLICATE_ACTION
+```
+
 ------------------------------------------------------------------------
 
 # Frontend Integration Rules
@@ -3286,6 +3775,12 @@ Frontend는 다음 규칙을 따른다.
     계산하지 않는다.
 17. 누피 콱!은 `allowedActions`에 `SELECT_TOOTH`가 있을 때만 선택 가능한
     이빨 버튼을 활성화하고, Mutation 중에는 전체 이빨 입력을 잠근다.
+18. 언더마인은 서버의 `cardOptions`와 `allowedActions`에 포함된 카드와 대상만
+    선택 가능하게 하며 길 배치나 대상 후보를 Frontend에서 계산하지 않는다.
+19. 언더마인은 `DISCARD_CARD`가 있을 때만 버리기 UI를 제공하며, 버린 카드의
+    종류를 다른 Player에게 표시하지 않는다.
+20. 언더마인의 역할, 손패, 지도 결과와 금 정보는 현재 Player에게 허용된
+    범위만 표시하고 별도 Global Store에 복제하지 않는다.
 
 ------------------------------------------------------------------------
 
@@ -3365,6 +3860,14 @@ Frontend는 다음 규칙을 따른다.
   `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/mafia/advance`                마피아 결과 단계 진행
 
   `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/tooth/selections`             누피 콱! 이빨 선택
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/undermine/role-check`         언더마인 역할 확인
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/undermine/card-plays`         언더마인 카드 행동
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/undermine/gold-selections`    언더마인 금 선택
+
+  `POST`        `/api/rooms/{roomId}/game-sessions/{gameSessionId}/undermine/rounds/next`        언더마인 다음 라운드
   ------------------------------------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------
@@ -3399,4 +3902,12 @@ Frontend는 다음 규칙을 따른다.
     제공하지 않는다.
 -   누피 콱! 결과에는 당첨 Player 한 명만 제공하며 별도 순위나 승자를 두지
     않는다.
+-   언더마인은 3~10명, 3라운드이며 역할·카드·보드·목적지·금을 라운드마다
+    서버가 초기화하고 판정한다.
+-   언더마인은 규칙상 실행 가능한 카드가 한 장도 없을 때만 카드 버리기를
+    허용한다.
+-   언더마인의 역할, 손패, 지도 결과, 금 카드와 진행 중 누적 금점수는
+    개인화된 `/state`에서만 제공한다.
+-   언더마인의 길 연결, 행동 후보, 라운드 승패, 금 지급과 최종 공동 우승자는
+    서버가 확정한다.
 -   모든 승패 판정은 서버가 수행한다.
